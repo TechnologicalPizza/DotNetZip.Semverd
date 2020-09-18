@@ -278,7 +278,7 @@ namespace Ionic.Zlib
         /// This ctor collects a message attached to the exception.
         /// </summary>
         /// <param name="s">the message for the exception.</param>
-        public ZlibException(System.String s)
+        public ZlibException(string s)
             : base(s)
         {
         }
@@ -326,7 +326,7 @@ namespace Ionic.Zlib
         ///   count depending on the data available in the source TextReader. Returns -1
         ///   if the end of the stream is reached.
         /// </returns>
-        public static System.Int32 ReadInput(System.IO.TextReader sourceTextReader, byte[] target, int start, int count)
+        public static int ReadInput(System.IO.TextReader sourceTextReader, byte[] target, int start, int count)
         {
             // Returns 0 bytes if not enough space in target
             if (target.Length == 0)
@@ -346,38 +346,38 @@ namespace Ionic.Zlib
         }
 
 
-        internal static byte[] ToByteArray(System.String sourceString)
+        internal static byte[] ToByteArray(string sourceString)
         {
-            return System.Text.UTF8Encoding.UTF8.GetBytes(sourceString);
+            return System.Text.Encoding.UTF8.GetBytes(sourceString);
         }
 
 
         internal static char[] ToCharArray(byte[] byteArray)
         {
-            return System.Text.UTF8Encoding.UTF8.GetChars(byteArray);
+            return System.Text.Encoding.UTF8.GetChars(byteArray);
         }
     }
 
     internal static class InternalConstants
     {
-        internal static readonly int MAX_BITS = 15;
-        internal static readonly int BL_CODES = 19;
-        internal static readonly int D_CODES = 30;
-        internal static readonly int LITERALS = 256;
-        internal static readonly int LENGTH_CODES = 29;
+        internal const int MAX_BITS = 15;
+        internal const int BL_CODES = 19;
+        internal const int D_CODES = 30;
+        internal const int LITERALS = 256;
+        internal const int LENGTH_CODES = 29;
         internal static readonly int L_CODES = (LITERALS + 1 + LENGTH_CODES);
 
         // Bit length codes must not exceed MAX_BL_BITS bits
-        internal static readonly int MAX_BL_BITS = 7;
+        internal const int MAX_BL_BITS = 7;
 
         // repeat previous bit length 3-6 times (2 bits of repeat count)
-        internal static readonly int REP_3_6 = 16;
+        internal const int REP_3_6 = 16;
 
         // repeat a zero length 3-10 times  (3 bits of repeat count)
-        internal static readonly int REPZ_3_10 = 17;
+        internal const int REPZ_3_10 = 17;
 
         // repeat a zero length 11-138 times  (7 bits of repeat count)
-        internal static readonly int REPZ_11_138 = 18;
+        internal const int REPZ_11_138 = 18;
 
     }
 
@@ -470,9 +470,9 @@ namespace Ionic.Zlib
     public sealed class Adler
     {
         // largest prime smaller than 65536
-        private static readonly uint BASE = 65521;
+        private const uint BASE = 65521;
         // NMAX is the largest n such that 255n(n+1)/2 + (n+1)(BASE-1) <= 2^32-1
-        private static readonly int NMAX = 5552;
+        private const int NMAX = 5552;
 
 
 #pragma warning disable 3001

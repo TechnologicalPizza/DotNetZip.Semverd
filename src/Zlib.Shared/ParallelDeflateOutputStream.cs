@@ -29,7 +29,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-
 namespace Ionic.Zlib
 {
     internal class WorkItem
@@ -43,16 +42,18 @@ namespace Ionic.Zlib
         public int compressedBytesAvailable;
         public ZlibCodec compressor;
 
-        public WorkItem(int size,
-                        CompressionLevel compressLevel,
-                        CompressionStrategy strategy,
-                        int ix)
+        public WorkItem(
+            int size,
+            CompressionLevel compressLevel,
+            CompressionStrategy strategy,
+            int ix)
         {
             this.buffer = new byte[size];
             // alloc 5 bytes overhead for every block (margin of safety= 2)
             int n = size + ((size / 32768) + 1) * 5 * 2;
             this.compressed = new byte[n];
             this.compressor = new ZlibCodec();
+            this.compressor.Strategy = strategy;
             this.compressor.InitializeDeflate(compressLevel, false);
             this.compressor.OutputBuffer = this.compressed;
             this.compressor.InputBuffer = this.buffer;
@@ -100,8 +101,8 @@ namespace Ionic.Zlib
     public class ParallelDeflateOutputStream : Stream
     {
 
-        private static readonly int IO_BUFFER_SIZE_DEFAULT = 64 * 1024;  // 128k
-        private static readonly int BufferPairsPerCore = 4;
+        private const int IO_BUFFER_SIZE_DEFAULT = 64 * 1024;
+        private const int BufferPairsPerCore = 4;
 
         private List<WorkItem> _pool;
         private bool _leaveOpen;
@@ -110,33 +111,25 @@ namespace Ionic.Zlib
         private int _maxBufferPairs;
         private int _bufferSize = IO_BUFFER_SIZE_DEFAULT;
         private AutoResetEvent _newlyCompressedBlob;
-        //private ManualResetEvent            _writingDone;
-        //private ManualResetEvent            _sessionReset;
-        private object _outputLock = new object();
+        //private ManualResetEvent _writingDone;
+        //private ManualResetEvent _sessionReset;
         private bool _isClosed;
         private bool _firstWriteDone;
         private int _currentlyFilling;
         private int _lastFilled;
         private int _lastWritten;
         private int _latestCompressed;
-        private int _Crc32;
         private Crc.CRC32 _runningCrc;
         private object _latestLock = new object();
         private Queue<int> _toWrite;
         private Queue<int> _toFill;
-        private Int64 _totalBytesProcessed;
         private CompressionLevel _compressLevel;
         private volatile Exception _pendingException;
         private bool _handlingException;
-        private object _eLock = new Object();  // protects _pendingException
+        private object _eLock = new object();  // protects _pendingException
 
-        // This bitfield is used only when Trace is defined.
-        //private TraceBits _DesiredTrace = TraceBits.Write | TraceBits.WriteBegin |
-        //TraceBits.WriteDone | TraceBits.Lifecycle | TraceBits.Fill | TraceBits.Flush |
-        //TraceBits.Session;
-
-        //private TraceBits _DesiredTrace = TraceBits.WriteBegin | TraceBits.WriteDone | TraceBits.Synch | TraceBits.Lifecycle  | TraceBits.Session ;
-
+#if Trace
+        private object _outputLock = new object();
         private TraceBits _DesiredTrace =
             TraceBits.Session |
             TraceBits.Compress |
@@ -147,6 +140,7 @@ namespace Ionic.Zlib
             TraceBits.EmitLock |
             TraceBits.EmitSkip |
             TraceBits.EmitBegin;
+#endif
 
         /// <summary>
         /// Create a ParallelDeflateOutputStream.
@@ -269,7 +263,7 @@ namespace Ionic.Zlib
         ///    true if the application would like the stream to remain open after inflation/deflation.
         /// </param>
         public ParallelDeflateOutputStream(Stream stream, CompressionLevel level, bool leaveOpen)
-            : this(stream, CompressionLevel.Default, CompressionStrategy.Default, leaveOpen)
+            : this(stream, level, CompressionStrategy.Default, leaveOpen)
         {
         }
 
@@ -397,8 +391,7 @@ namespace Ionic.Zlib
             set
             {
                 if (value < 4)
-                    throw new ArgumentException("MaxBufferPairs",
-                                                "Value must be 4 or greater.");
+                    throw new ArgumentException("Value must be 4 or greater.", nameof(value));
                 _maxBufferPairs = value;
             }
         }
@@ -461,7 +454,7 @@ namespace Ionic.Zlib
         /// <remarks>
         /// This value is meaningful only after a call to Close().
         /// </remarks>
-        public int Crc32 { get { return _Crc32; } }
+        public int Crc32 { get; private set; }
 
 
         /// <summary>
@@ -470,10 +463,10 @@ namespace Ionic.Zlib
         /// <remarks>
         /// This value is meaningful only after a call to Close().
         /// </remarks>
-        public Int64 BytesProcessed { get { return _totalBytesProcessed; } }
+        public long BytesProcessed { get; private set; }
 
 
-        private void _InitializePoolOfWorkItems()
+        private void InitializePoolOfWorkItems()
         {
             _toWrite = new Queue<int>();
             _toFill = new Queue<int>();
@@ -550,7 +543,7 @@ namespace Ionic.Zlib
                 // Want to do this on first Write, first session, and not in the
                 // constructor.  We want to allow MaxBufferPairs to
                 // change after construction, but before first Write.
-                _InitializePoolOfWorkItems();
+                InitializePoolOfWorkItems();
                 _firstWriteDone = true;
             }
 
@@ -628,12 +621,8 @@ namespace Ionic.Zlib
                                 workitem.ordinal,
                                 workitem.inputBytesAvailable);
 
-#if !PCL
-                    if (!ThreadPool.QueueUserWorkItem(_DeflateOne, workitem))
+                    if (!ThreadPool.QueueUserWorkItem(DeflateOne, workitem))
                         throw new Exception("Cannot enqueue workitem");
-#else
-                    System.Threading.Tasks.Task.Run(() => _DeflateOne(workitem));
-#endif
 
                     _currentlyFilling = -1; // will get a new buffer next time
                 }
@@ -651,21 +640,21 @@ namespace Ionic.Zlib
 
 
 
-        private void _FlushFinish()
+        private void FlushFinish()
         {
             // After writing a series of compressed buffers, each one closed
             // with Flush.Sync, we now write the final one as Flush.Finish,
             // and then stop.
             byte[] buffer = new byte[128];
             var compressor = new ZlibCodec();
-            int rc = compressor.InitializeDeflate(_compressLevel, false);
+            _ = compressor.InitializeDeflate(_compressLevel, false);
             compressor.InputBuffer = null;
             compressor.NextIn = 0;
             compressor.AvailableBytesIn = 0;
             compressor.OutputBuffer = buffer;
             compressor.NextOut = 0;
             compressor.AvailableBytesOut = buffer.Length;
-            rc = compressor.Deflate(FlushType.Finish);
+            int rc = compressor.Deflate(FlushType.Finish);
 
             if (rc != ZlibConstants.Z_STREAM_END && rc != ZlibConstants.Z_OK)
                 throw new Exception("deflating: " + compressor.Message);
@@ -684,11 +673,11 @@ namespace Ionic.Zlib
 
             compressor.EndDeflate();
 
-            _Crc32 = _runningCrc.Crc32Result;
+            Crc32 = _runningCrc.Crc32Result;
         }
 
 
-        private void _Flush(bool lastInput)
+        private void Flush(bool lastInput)
         {
             if (_isClosed)
                 throw new InvalidOperationException();
@@ -700,14 +689,14 @@ namespace Ionic.Zlib
             if (_currentlyFilling >= 0)
             {
                 WorkItem workitem = _pool[_currentlyFilling];
-                _DeflateOne(workitem);
+                DeflateOne(workitem);
                 _currentlyFilling = -1; // get a new buffer next Write()
             }
 
             if (lastInput)
             {
                 EmitPendingBuffers(true, false);
-                _FlushFinish();
+                FlushFinish();
             }
             else
             {
@@ -732,27 +721,14 @@ namespace Ionic.Zlib
             if (_handlingException)
                 return;
 
-            _Flush(false);
+            Flush(false);
         }
 
+        // workitem 10030 - implement a new Dispose method
 
-#if !PCL
-        /// <summary>
-        /// Close the stream.
-        /// </summary>
-        /// <remarks>
-        /// You must call Close on the stream to guarantee that all of the data written in has
-        /// been compressed, and the compressed data has been written out.
-        /// </remarks>
-        public override void Close()
+        protected override void Dispose(bool disposing)
         {
-            InnerClose();
-        }
-#endif
-
-        private void InnerClose()
-        {
-            TraceOutput(TraceBits.Session, "Close {0:X8}", this.GetHashCode());
+            TraceOutput(TraceBits.Lifecycle, "Dispose  {0:X8}", this.GetHashCode());
 
             if (_pendingException != null)
             {
@@ -768,46 +744,19 @@ namespace Ionic.Zlib
             if (_isClosed)
                 return;
 
-            _Flush(true);
-
-            if (!_leaveOpen)
-                _outStream.Dispose();
-
-            _isClosed = true;
-        }
-
-
-
-        // workitem 10030 - implement a new Dispose method
-
-        /// <summary>Dispose the object</summary>
-        /// <remarks>
-        ///   <para>
-        ///     Because ParallelDeflateOutputStream is IDisposable, the
-        ///     application must call this method when finished using the instance.
-        ///   </para>
-        ///   <para>
-        ///     This method is generally called implicitly upon exit from
-        ///     a <c>using</c> scope in C# (<c>Using</c> in VB).
-        ///   </para>
-        /// </remarks>
-        public new void Dispose()
-        {
-            TraceOutput(TraceBits.Lifecycle, "Dispose  {0:X8}", this.GetHashCode());
+            Flush(true);
             _pool = null;
-            Dispose(true);
-        }
 
+            if (disposing)
+            {
+                if (!_leaveOpen)
+                    _outStream.Dispose();
 
+                _newlyCompressedBlob.Dispose();
+            }
+            _isClosed = true;
 
-        /// <summary>The Dispose method</summary>
-        /// <param name="disposing">
-        ///   indicates whether the Dispose method was invoked by user code.
-        /// </param>
-        protected override void Dispose(bool disposing)
-        {
             base.Dispose(disposing);
-            InnerClose();
         }
 
 
@@ -869,7 +818,7 @@ namespace Ionic.Zlib
             }
 
             _firstWriteDone = false;
-            _totalBytesProcessed = 0L;
+            BytesProcessed = 0L;
             _runningCrc = new Crc.CRC32();
             _isClosed = false;
             _currentlyFilling = -1;
@@ -904,8 +853,7 @@ namespace Ionic.Zlib
             {
                 int firstSkip = -1;
                 int millisecondsToWait = doAll ? 200 : (mustWait ? -1 : 0);
-                int nextToWrite = -1;
-
+                int nextToWrite;
                 do
                 {
                     if (Monitor.TryEnter(_toWrite, millisecondsToWait))
@@ -963,7 +911,7 @@ namespace Ionic.Zlib
 
                             _outStream.Write(workitem.compressed, 0, workitem.compressedBytesAvailable);
                             _runningCrc.Combine(workitem.crc, workitem.inputBytesAvailable);
-                            _totalBytesProcessed += workitem.inputBytesAvailable;
+                            BytesProcessed += workitem.inputBytesAvailable;
                             workitem.inputBytesAvailable = 0;
 
                             TraceOutput(TraceBits.EmitDone,
@@ -991,182 +939,7 @@ namespace Ionic.Zlib
             emitting = false;
         }
 
-
-
-#if OLD
-        private void _PerpetualWriterMethod(object state)
-        {
-            TraceOutput(TraceBits.WriterThread, "_PerpetualWriterMethod START");
-
-            try
-            {
-                do
-                {
-                    // wait for the next session
-                    TraceOutput(TraceBits.Synch | TraceBits.WriterThread, "Synch    _sessionReset.WaitOne(begin) PWM");
-                    _sessionReset.WaitOne();
-                    TraceOutput(TraceBits.Synch | TraceBits.WriterThread, "Synch    _sessionReset.WaitOne(done)  PWM");
-
-                    if (_isDisposed) break;
-
-                    TraceOutput(TraceBits.Synch | TraceBits.WriterThread, "Synch    _sessionReset.Reset()        PWM");
-                    _sessionReset.Reset();
-
-                    // repeatedly write buffers as they become ready
-                    WorkItem workitem = null;
-                    Ionic.Zlib.CRC32 c= new Ionic.Zlib.CRC32();
-                    do
-                    {
-                        workitem = _pool[_nextToWrite % _pc];
-                        lock(workitem)
-                        {
-                            if (_noMoreInputForThisSegment)
-                                TraceOutput(TraceBits.Write,
-                                               "Write    drain    wi({0}) stat({1}) canuse({2})  cba({3})",
-                                               workitem.index,
-                                               workitem.status,
-                                               (workitem.status == (int)WorkItem.Status.Compressed),
-                                               workitem.compressedBytesAvailable);
-
-                            do
-                            {
-                                if (workitem.status == (int)WorkItem.Status.Compressed)
-                                {
-                                    TraceOutput(TraceBits.WriteBegin,
-                                                   "Write    begin    wi({0}) stat({1})              cba({2})",
-                                                   workitem.index,
-                                                   workitem.status,
-                                                   workitem.compressedBytesAvailable);
-
-                                    workitem.status = (int)WorkItem.Status.Writing;
-                                    _outStream.Write(workitem.compressed, 0, workitem.compressedBytesAvailable);
-                                    c.Combine(workitem.crc, workitem.inputBytesAvailable);
-                                    _totalBytesProcessed += workitem.inputBytesAvailable;
-                                    _nextToWrite++;
-                                    workitem.inputBytesAvailable= 0;
-                                    workitem.status = (int)WorkItem.Status.Done;
-
-                                    TraceOutput(TraceBits.WriteDone,
-                                                   "Write    done     wi({0}) stat({1})              cba({2})",
-                                                   workitem.index,
-                                                   workitem.status,
-                                                   workitem.compressedBytesAvailable);
-
-
-                                    Monitor.Pulse(workitem);
-                                    break;
-                                }
-                                else
-                                {
-                                    int wcycles = 0;
-                                    // I've locked a workitem I cannot use.
-                                    // Therefore, wake someone else up, and then release the lock.
-                                    while (workitem.status != (int)WorkItem.Status.Compressed)
-                                    {
-                                        TraceOutput(TraceBits.WriteWait,
-                                                       "Write    waiting  wi({0}) stat({1}) nw({2}) nf({3}) nomore({4})",
-                                                       workitem.index,
-                                                       workitem.status,
-                                                       _nextToWrite, _nextToFill,
-                                                       _noMoreInputForThisSegment );
-
-                                        if (_noMoreInputForThisSegment && _nextToWrite == _nextToFill)
-                                            break;
-
-                                        wcycles++;
-
-                                        // wake up someone else
-                                        Monitor.Pulse(workitem);
-                                        // release and wait
-                                        Monitor.Wait(workitem);
-
-                                        if (workitem.status == (int)WorkItem.Status.Compressed)
-                                            TraceOutput(TraceBits.WriteWait,
-                                                           "Write    A-OK     wi({0}) stat({1}) iba({2}) cba({3}) cyc({4})",
-                                                           workitem.index,
-                                                           workitem.status,
-                                                           workitem.inputBytesAvailable,
-                                                           workitem.compressedBytesAvailable,
-                                                           wcycles);
-                                    }
-
-                                    if (_noMoreInputForThisSegment && _nextToWrite == _nextToFill)
-                                        break;
-
-                                }
-                            }
-                            while (true);
-                        }
-
-                        if (_noMoreInputForThisSegment)
-                            TraceOutput(TraceBits.Write,
-                                           "Write    nomore  nw({0}) nf({1}) break({2})",
-                                           _nextToWrite, _nextToFill, (_nextToWrite == _nextToFill));
-
-                        if (_noMoreInputForThisSegment && _nextToWrite == _nextToFill)
-                            break;
-
-                    } while (true);
-
-
-                    // Finish:
-                    // After writing a series of buffers, closing each one with
-                    // Flush.Sync, we now write the final one as Flush.Finish, and
-                    // then stop.
-                    byte[] buffer = new byte[128];
-                    ZlibCodec compressor = new ZlibCodec();
-                    int rc = compressor.InitializeDeflate(_compressLevel, false);
-                    compressor.InputBuffer = null;
-                    compressor.NextIn = 0;
-                    compressor.AvailableBytesIn = 0;
-                    compressor.OutputBuffer = buffer;
-                    compressor.NextOut = 0;
-                    compressor.AvailableBytesOut = buffer.Length;
-                    rc = compressor.Deflate(FlushType.Finish);
-
-                    if (rc != ZlibConstants.Z_STREAM_END && rc != ZlibConstants.Z_OK)
-                        throw new Exception("deflating: " + compressor.Message);
-
-                    if (buffer.Length - compressor.AvailableBytesOut > 0)
-                    {
-                        TraceOutput(TraceBits.WriteBegin,
-                                       "Write    begin    flush bytes({0})",
-                                       buffer.Length - compressor.AvailableBytesOut);
-
-                        _outStream.Write(buffer, 0, buffer.Length - compressor.AvailableBytesOut);
-
-                        TraceOutput(TraceBits.WriteBegin,
-                                       "Write    done     flush");
-                    }
-
-                    compressor.EndDeflate();
-
-                    _Crc32 = c.Crc32Result;
-
-                    // signal that writing is complete:
-                    TraceOutput(TraceBits.Synch, "Synch    _writingDone.Set()           PWM");
-                    _writingDone.Set();
-                }
-                while (true);
-            }
-            catch (System.Exception exc1)
-            {
-                lock(_eLock)
-                {
-                    // expose the exception to the main thread
-                    if (_pendingException!=null)
-                        _pendingException = exc1;
-                }
-            }
-
-            TraceOutput(TraceBits.WriterThread, "_PerpetualWriterMethod FINIS");
-        }
-#endif
-
-
-
-
-        private void _DeflateOne(Object wi)
+        private void DeflateOne(object wi)
         {
             // compress one buffer
             WorkItem workitem = (WorkItem)wi;
@@ -1212,13 +985,9 @@ namespace Ionic.Zlib
             }
         }
 
-
-
-
-        private bool DeflateOneSegment(WorkItem workitem)
+        private static bool DeflateOneSegment(WorkItem workitem)
         {
             ZlibCodec compressor = workitem.compressor;
-            int rc = 0;
             compressor.ResetDeflate();
             compressor.NextIn = 0;
 
@@ -1234,7 +1003,7 @@ namespace Ionic.Zlib
             while (compressor.AvailableBytesIn > 0 || compressor.AvailableBytesOut == 0);
 
             // step 2: flush (sync)
-            rc = compressor.Deflate(FlushType.Sync);
+            int rc = compressor.Deflate(FlushType.Sync);
 
             workitem.compressedBytesAvailable = (int)compressor.TotalBytesOut;
             return true;
@@ -1242,22 +1011,22 @@ namespace Ionic.Zlib
 
 
         [System.Diagnostics.Conditional("Trace")]
-        private void TraceOutput(TraceBits bits, string format, params object[] varParams)
+        private static void TraceOutput(TraceBits bits, string format, params object[] varParams)
         {
+#if Trace
             if ((bits & _DesiredTrace) != 0)
             {
                 lock (_outputLock)
                 {
-#if !PCL
                     int tid = Thread.CurrentThread.GetHashCode();
 
                     Console.ForegroundColor = (ConsoleColor)(tid % 8 + 8);
                     Console.Write("{0:000} PDOS ", tid);
                     Console.WriteLine(format, varParams);
                     Console.ResetColor();
-#endif
                 }
             }
+#endif
         }
 
 

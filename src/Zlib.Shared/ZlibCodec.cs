@@ -130,7 +130,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// used for diagnostics, when something goes wrong!
         /// </summary>
-        public System.String Message;
+        public string Message;
 
         internal DeflateManager dstate;
         internal InflateManager istate;
@@ -427,7 +427,7 @@ namespace Ionic.Zlib
         /// <returns>Z_OK if all goes well. You generally don't need to check the return code.</returns>
         public int InitializeDeflate()
         {
-            return _InternalInitializeDeflate(true);
+            return InternalInitializeDeflate(true);
         }
 
         /// <summary>
@@ -442,7 +442,7 @@ namespace Ionic.Zlib
         public int InitializeDeflate(CompressionLevel level)
         {
             this.CompressLevel = level;
-            return _InternalInitializeDeflate(true);
+            return InternalInitializeDeflate(true);
         }
 
 
@@ -463,7 +463,7 @@ namespace Ionic.Zlib
         public int InitializeDeflate(CompressionLevel level, bool wantRfc1950Header)
         {
             this.CompressLevel = level;
-            return _InternalInitializeDeflate(wantRfc1950Header);
+            return InternalInitializeDeflate(wantRfc1950Header);
         }
 
 
@@ -481,7 +481,7 @@ namespace Ionic.Zlib
         {
             this.CompressLevel = level;
             this.WindowBits = bits;
-            return _InternalInitializeDeflate(true);
+            return InternalInitializeDeflate(true);
         }
 
         /// <summary>
@@ -498,10 +498,10 @@ namespace Ionic.Zlib
         {
             this.CompressLevel = level;
             this.WindowBits = bits;
-            return _InternalInitializeDeflate(wantRfc1950Header);
+            return InternalInitializeDeflate(wantRfc1950Header);
         }
 
-        private int _InternalInitializeDeflate(bool wantRfc1950Header)
+        private int InternalInitializeDeflate(bool wantRfc1950Header)
         {
             if (istate != null)
                 throw new ZlibException("You may not call InitializeDeflate() after calling InitializeInflate().");
@@ -686,7 +686,7 @@ namespace Ionic.Zlib
                 dstate.pending.Length < (dstate.nextPending + len) ||
                 OutputBuffer.Length < (NextOut + len))
             {
-                throw new ZlibException(String.Format("Invalid State. (pending.Length={0}, pendingCount={1})",
+                throw new ZlibException(string.Format("Invalid State. (pending.Length={0}, pendingCount={1})",
                     dstate.pending.Length, dstate.pendingCount));
             }
 

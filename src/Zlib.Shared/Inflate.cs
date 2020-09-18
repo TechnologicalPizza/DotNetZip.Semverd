@@ -111,12 +111,12 @@ namespace Ionic.Zlib
         internal int end;                   // one byte after sliding window
         internal int readAt;                // window read pointer
         internal int writeAt;               // window write pointer
-        internal System.Object checkfn;     // check function
+        internal object checkfn;     // check function
         internal uint check;                // check on output
 
         internal InfTree inftree = new InfTree();
 
-        internal InflateBlocks(ZlibCodec codec, System.Object checkfn, int w)
+        internal InflateBlocks(ZlibCodec codec, object checkfn, int w)
         {
             _codec = codec;
             hufts = new int[MANY * 3];
@@ -838,9 +838,6 @@ namespace Ionic.Zlib
             int j;      // temporary storage
             int tindex; // temporary pointer
             int e;      // extra bits or operation
-            int b = 0;  // bit buffer
-            int k = 0;  // bits in bit buffer
-            int p = 0;  // input data pointer
             int n;      // bytes available there
             int q;      // output window write pointer
             int m;      // bytes to end of window or read pointer
@@ -849,10 +846,10 @@ namespace Ionic.Zlib
             ZlibCodec z = blocks._codec;
 
             // copy input/output information to locals (UPDATE macro restores)
-            p = z.NextIn;
+            int p = z.NextIn;
             n = z.AvailableBytesIn;
-            b = blocks.bitb;
-            k = blocks.bitk;
+            int b = blocks.bitb;
+            int k = blocks.bitk;
             q = blocks.writeAt;
             m = q < blocks.readAt ? blocks.readAt - q - 1 : blocks.end - q;
 
@@ -1243,7 +1240,7 @@ namespace Ionic.Zlib
         // at least ten.  The ten bytes are six bytes for the longest length/
         // distance pair plus four bytes for overloading the bit buffer.
 
-        internal int InflateFast(int bl, int bd, int[] tl, int tl_index, int[] td, int td_index, InflateBlocks s, ZlibCodec z)
+        internal static int InflateFast(int bl, int bd, int[] tl, int tl_index, int[] td, int td_index, InflateBlocks s, ZlibCodec z)
         {
             int t;        // temporary pointer
             int[] tp;     // temporary pointer
@@ -1400,8 +1397,6 @@ namespace Ionic.Zlib
                                         {
                                             Array.Copy(s.window, r, s.window, q, e);
                                             q += e;
-                                            r += e;
-                                            e = 0;
                                         }
                                         r = 0; // copy rest from start of window
                                     }
@@ -1420,8 +1415,6 @@ namespace Ionic.Zlib
                                 {
                                     Array.Copy(s.window, r, s.window, q, c);
                                     q += c;
-                                    r += c;
-                                    c = 0;
                                 }
                                 break;
                             }
@@ -1568,14 +1561,7 @@ namespace Ionic.Zlib
         // if BAD, inflateSync's marker bytes count
         internal int marker;
 
-        // mode independent information
-        //internal int nowrap; // flag for no wrapper
-        private bool _handleRfc1950HeaderBytes = true;
-        internal bool HandleRfc1950HeaderBytes
-        {
-            get { return _handleRfc1950HeaderBytes; }
-            set { _handleRfc1950HeaderBytes = value; }
-        }
+        internal bool HandleRfc1950HeaderBytes { get; set; } = true;
         internal int wbits; // log2(window size)  (8..15, defaults to 15)
 
         internal InflateBlocks blocks; // current inflate_blocks state
@@ -1584,7 +1570,7 @@ namespace Ionic.Zlib
 
         public InflateManager(bool expectRfc1950HeaderBytes)
         {
-            _handleRfc1950HeaderBytes = expectRfc1950HeaderBytes;
+            HandleRfc1950HeaderBytes = expectRfc1950HeaderBytes;
         }
 
         internal int Reset()
@@ -1666,14 +1652,14 @@ namespace Ionic.Zlib
                         if (((method = _codec.InputBuffer[_codec.NextIn++]) & 0xf) != Z_DEFLATED)
                         {
                             mode = InflateManagerMode.BAD;
-                            _codec.Message = String.Format("unknown compression method (0x{0:X2})", method);
+                            _codec.Message = string.Format("unknown compression method (0x{0:X2})", method);
                             marker = 5; // can't try inflateSync
                             break;
                         }
                         if ((method >> 4) + 8 > wbits)
                         {
                             mode = InflateManagerMode.BAD;
-                            _codec.Message = String.Format("invalid window size ({0})", (method >> 4) + 8);
+                            _codec.Message = string.Format("invalid window size ({0})", (method >> 4) + 8);
                             marker = 5; // can't try inflateSync
                             break;
                         }
@@ -1737,7 +1723,6 @@ namespace Ionic.Zlib
                     case InflateManagerMode.DICT1:
                         if (_codec.AvailableBytesIn == 0)
                             return r;
-                        r = f;
                         _codec.AvailableBytesIn--;
                         _codec.TotalBytesIn++;
                         expectedCheck += (uint)(_codec.InputBuffer[_codec.NextIn++] & 0x000000ff);
@@ -1829,7 +1814,7 @@ namespace Ionic.Zlib
                         return ZlibConstants.Z_STREAM_END;
 
                     case InflateManagerMode.BAD:
-                        throw new ZlibException(String.Format("Bad state ({0})", _codec.Message));
+                        throw new ZlibException(string.Format("Bad state ({0})", _codec.Message));
 
                     default:
                         throw new ZlibException("Stream error.");

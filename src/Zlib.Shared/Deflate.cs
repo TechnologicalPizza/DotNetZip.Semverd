@@ -89,8 +89,8 @@ namespace Ionic.Zlib
 
     internal sealed class DeflateManager
     {
-        private static readonly int MEM_LEVEL_MAX = 9;
-        private static readonly int MEM_LEVEL_DEFAULT = 8;
+        private const int MEM_LEVEL_MAX = 9;
+        private const int MEM_LEVEL_DEFAULT = 8;
 
         internal delegate BlockState CompressFunc(FlushType flush);
 
@@ -153,7 +153,7 @@ namespace Ionic.Zlib
 
         private CompressFunc DeflateFunction;
 
-        private static readonly System.String[] _ErrorMessage = new System.String[]
+        private static readonly string[] _ErrorMessage = new string[]
         {
             "need dictionary",
             "stream end",
@@ -168,34 +168,34 @@ namespace Ionic.Zlib
         };
 
         // preset dictionary flag in zlib header
-        private static readonly int PRESET_DICT = 0x20;
+        private const int PRESET_DICT = 0x20;
 
-        private static readonly int INIT_STATE = 42;
-        private static readonly int BUSY_STATE = 113;
-        private static readonly int FINISH_STATE = 666;
+        private const int INIT_STATE = 42;
+        private const int BUSY_STATE = 113;
+        private const int FINISH_STATE = 666;
 
         // The deflate compression method
-        private static readonly int Z_DEFLATED = 8;
+        private const int Z_DEFLATED = 8;
 
-        private static readonly int STORED_BLOCK = 0;
-        private static readonly int STATIC_TREES = 1;
-        private static readonly int DYN_TREES = 2;
+        private const int STORED_BLOCK = 0;
+        private const int STATIC_TREES = 1;
+        private const int DYN_TREES = 2;
 
         // The three kinds of block type
-        private static readonly int Z_BINARY = 0;
-        private static readonly int Z_ASCII = 1;
-        private static readonly int Z_UNKNOWN = 2;
+        private const int Z_BINARY = 0;
+        private const int Z_ASCII = 1;
+        private const int Z_UNKNOWN = 2;
 
-        private static readonly int Buf_size = 8 * 2;
+        private const int Buf_size = 8 * 2;
 
-        private static readonly int MIN_MATCH = 3;
-        private static readonly int MAX_MATCH = 258;
+        private const int MIN_MATCH = 3;
+        private const int MAX_MATCH = 258;
 
         private static readonly int MIN_LOOKAHEAD = (MAX_MATCH + MIN_MATCH + 1);
 
         private static readonly int HEAP_SIZE = (2 * InternalConstants.L_CODES + 1);
 
-        private static readonly int END_BLOCK = 256;
+        private const int END_BLOCK = 256;
 
         internal ZlibCodec _codec; // the zlib encoder/decoder
         internal int status;       // as the name implies
@@ -1526,12 +1526,8 @@ namespace Ionic.Zlib
 
 
         private bool Rfc1950BytesEmitted = false;
-        private bool _WantRfc1950HeaderBytes = true;
-        internal bool WantRfc1950HeaderBytes
-        {
-            get { return _WantRfc1950HeaderBytes; }
-            set { _WantRfc1950HeaderBytes = value; }
-        }
+
+        internal bool WantRfc1950HeaderBytes { get; set; } = true;
 
 
         internal int Initialize(ZlibCodec codec, CompressionLevel level)
@@ -1559,7 +1555,7 @@ namespace Ionic.Zlib
                 throw new ZlibException("windowBits must be in the range 9..15.");
 
             if (memLevel < 1 || memLevel > MEM_LEVEL_MAX)
-                throw new ZlibException(String.Format("memLevel must be in the range 1.. {0}", MEM_LEVEL_MAX));
+                throw new ZlibException(string.Format("memLevel must be in the range 1.. {0}", MEM_LEVEL_MAX));
 
             _codec.dstate = this;
 
@@ -1730,7 +1726,7 @@ namespace Ionic.Zlib
                 (status == FINISH_STATE && flush != FlushType.Finish))
             {
                 _codec.Message = _ErrorMessage[ZlibConstants.Z_NEED_DICT - (ZlibConstants.Z_STREAM_ERROR)];
-                throw new ZlibException(String.Format("Something is fishy. [{0}]", _codec.Message));
+                throw new ZlibException(string.Format("Something is fishy. [{0}]", _codec.Message));
             }
             if (_codec.AvailableBytesOut == 0)
             {
