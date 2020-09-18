@@ -247,8 +247,7 @@ namespace Ionic.Zlib
         // negative when the window is moved backwards.
 
         internal int block_start;
-
-        Config config;
+        private Config config;
         internal int match_length;    // length of best match
         internal int prev_match;      // previous match
         internal int match_available; // set if previous match exists
@@ -418,7 +417,8 @@ namespace Ionic.Zlib
                     break;
 
                 // Exchange v with the smallest son
-                heap[k] = heap[j]; k = j;
+                heap[k] = heap[j];
+                k = j;
                 // And continue down the tree, setting j to the left son of k
                 j <<= 1;
             }
@@ -440,20 +440,22 @@ namespace Ionic.Zlib
             int n; // iterates over all tree elements
             int prevlen = -1; // last emitted length
             int curlen; // length of current code
-            int nextlen = (int)tree[0 * 2 + 1]; // length of next code
+            int nextlen = tree[0 * 2 + 1]; // length of next code
             int count = 0; // repeat count of the current code
             int max_count = 7; // max repeat count
             int min_count = 4; // min repeat count
 
             if (nextlen == 0)
             {
-                max_count = 138; min_count = 3;
+                max_count = 138;
+                min_count = 3;
             }
-            tree[(max_code + 1) * 2 + 1] = (short)0x7fff; // guard //??
+            tree[(max_code + 1) * 2 + 1] = 0x7fff; // guard //??
 
             for (n = 0; n <= max_code; n++)
             {
-                curlen = nextlen; nextlen = (int)tree[(n + 1) * 2 + 1];
+                curlen = nextlen;
+                nextlen = tree[(n + 1) * 2 + 1];
                 if (++count < max_count && curlen == nextlen)
                 {
                     continue;
@@ -476,18 +478,22 @@ namespace Ionic.Zlib
                 {
                     bl_tree[InternalConstants.REPZ_11_138 * 2]++;
                 }
-                count = 0; prevlen = curlen;
+                count = 0;
+                prevlen = curlen;
                 if (nextlen == 0)
                 {
-                    max_count = 138; min_count = 3;
+                    max_count = 138;
+                    min_count = 3;
                 }
                 else if (curlen == nextlen)
                 {
-                    max_count = 6; min_count = 3;
+                    max_count = 6;
+                    min_count = 3;
                 }
                 else
                 {
-                    max_count = 7; min_count = 4;
+                    max_count = 7;
+                    min_count = 4;
                 }
             }
         }
@@ -545,21 +551,23 @@ namespace Ionic.Zlib
         internal void send_tree(short[] tree, int max_code)
         {
             int n;                           // iterates over all tree elements
-            int prevlen   = -1;              // last emitted length
+            int prevlen = -1;              // last emitted length
             int curlen;                      // length of current code
-            int nextlen   = tree[0 * 2 + 1]; // length of next code
-            int count     = 0;               // repeat count of the current code
+            int nextlen = tree[0 * 2 + 1]; // length of next code
+            int count = 0;               // repeat count of the current code
             int max_count = 7;               // max repeat count
             int min_count = 4;               // min repeat count
 
             if (nextlen == 0)
             {
-                max_count = 138; min_count = 3;
+                max_count = 138;
+                min_count = 3;
             }
 
             for (n = 0; n <= max_code; n++)
             {
-                curlen = nextlen; nextlen = tree[(n + 1) * 2 + 1];
+                curlen = nextlen;
+                nextlen = tree[(n + 1) * 2 + 1];
                 if (++count < max_count && curlen == nextlen)
                 {
                     continue;
@@ -576,7 +584,8 @@ namespace Ionic.Zlib
                 {
                     if (curlen != prevlen)
                     {
-                        send_code(curlen, bl_tree); count--;
+                        send_code(curlen, bl_tree);
+                        count--;
                     }
                     send_code(InternalConstants.REP_3_6, bl_tree);
                     send_bits(count - 3, 2);
@@ -591,18 +600,22 @@ namespace Ionic.Zlib
                     send_code(InternalConstants.REPZ_11_138, bl_tree);
                     send_bits(count - 11, 7);
                 }
-                count = 0; prevlen = curlen;
+                count = 0;
+                prevlen = curlen;
                 if (nextlen == 0)
                 {
-                    max_count = 138; min_count = 3;
+                    max_count = 138;
+                    min_count = 3;
                 }
                 else if (curlen == nextlen)
                 {
-                    max_count = 6; min_count = 3;
+                    max_count = 6;
+                    min_count = 3;
                 }
                 else
                 {
-                    max_count = 7; min_count = 4;
+                    max_count = 7;
+                    min_count = 4;
                 }
             }
         }
@@ -649,15 +662,15 @@ namespace Ionic.Zlib
             int len = length;
             unchecked
             {
-                if (bi_valid > (int)Buf_size - len)
+                if (bi_valid > Buf_size - len)
                 {
                     //int val = value;
                     //      bi_buf |= (val << bi_valid);
 
                     bi_buf |= (short)((value << bi_valid) & 0xffff);
                     //put_short(bi_buf);
-                        pending[pendingCount++] = (byte)bi_buf;
-                        pending[pendingCount++] = (byte)(bi_buf >> 8);
+                    pending[pendingCount++] = (byte)bi_buf;
+                    pending[pendingCount++] = (byte)(bi_buf >> 8);
 
 
                     bi_buf = (short)((uint)value >> (Buf_size - bi_valid));
@@ -706,7 +719,7 @@ namespace Ionic.Zlib
         // the current block must be flushed.
         internal bool _tr_tally(int dist, int lc)
         {
-            pending[_distanceOffset + last_lit * 2] = unchecked((byte) ( (uint)dist >> 8 ) );
+            pending[_distanceOffset + last_lit * 2] = unchecked((byte)((uint)dist >> 8));
             pending[_distanceOffset + last_lit * 2 + 1] = unchecked((byte)dist);
             pending[_lengthOffset + last_lit] = unchecked((byte)lc);
             last_lit++;
@@ -733,7 +746,7 @@ namespace Ionic.Zlib
                 int dcode;
                 for (dcode = 0; dcode < InternalConstants.D_CODES; dcode++)
                 {
-                    out_length = (int)(out_length + (int)dyn_dtree[dcode * 2] * (5L + Tree.ExtraDistanceBits[dcode]));
+                    out_length = (int)(out_length + dyn_dtree[dcode * 2] * (5L + Tree.ExtraDistanceBits[dcode]));
                 }
                 out_length >>= 3;
                 if ((matches < (last_lit / 2)) && out_length < in_length / 2)
@@ -824,15 +837,18 @@ namespace Ionic.Zlib
             int bin_freq = 0;
             while (n < 7)
             {
-                bin_freq += dyn_ltree[n * 2]; n++;
+                bin_freq += dyn_ltree[n * 2];
+                n++;
             }
             while (n < 128)
             {
-                ascii_freq += dyn_ltree[n * 2]; n++;
+                ascii_freq += dyn_ltree[n * 2];
+                n++;
             }
             while (n < InternalConstants.LITERALS)
             {
-                bin_freq += dyn_ltree[n * 2]; n++;
+                bin_freq += dyn_ltree[n * 2];
+                n++;
             }
             data_type = (sbyte)(bin_freq > (ascii_freq >> 2) ? Z_BINARY : Z_ASCII);
         }
@@ -944,8 +960,8 @@ namespace Ionic.Zlib
                 if (strstart == 0 || strstart >= max_start)
                 {
                     // strstart == 0 is possible when wraparound on 16-bit machine
-                    lookahead = (int)(strstart - max_start);
-                    strstart = (int)max_start;
+                    lookahead = strstart - max_start;
+                    strstart = max_start;
 
                     flush_block_only(false);
                     if (_codec.AvailableBytesOut == 0)
@@ -1423,11 +1439,11 @@ namespace Ionic.Zlib
         internal int longest_match(int cur_match)
         {
             int chain_length = config.MaxChainLength; // max hash chain length
-            int scan         = strstart;              // current string
+            int scan = strstart;              // current string
             int match;                                // matched string
             int len;                                  // length of current match
-            int best_len     = prev_length;           // best match length so far
-            int limit        = strstart > (w_size - MIN_LOOKAHEAD) ? strstart - (w_size - MIN_LOOKAHEAD) : 0;
+            int best_len = prev_length;           // best match length so far
+            int limit = strstart > (w_size - MIN_LOOKAHEAD) ? strstart - (w_size - MIN_LOOKAHEAD) : 0;
 
             int niceLength = config.NiceLength;
 
@@ -1471,7 +1487,8 @@ namespace Ionic.Zlib
                 // It is not necessary to compare scan[2] and match[2] since they
                 // are always equal when the other bytes match, given that
                 // the hash keys are equal and that HASH_BITS >= 8.
-                scan += 2; match++;
+                scan += 2;
+                match++;
 
                 // We check for insufficient lookahead only every 8th comparison;
                 // the 256th check will be made at strstart+258.
@@ -1487,7 +1504,7 @@ namespace Ionic.Zlib
                        window[++scan] == window[++match] &&
                        window[++scan] == window[++match] && scan < strend);
 
-                len = MAX_MATCH - (int)(strend - scan);
+                len = MAX_MATCH - (strend - scan);
                 scan = strend - MAX_MATCH;
 
                 if (len > best_len)

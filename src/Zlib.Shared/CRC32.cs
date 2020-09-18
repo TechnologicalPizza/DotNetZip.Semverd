@@ -27,7 +27,6 @@
 
 
 using System;
-using Interop = System.Runtime.InteropServices;
 
 namespace Ionic.Crc
 {
@@ -95,13 +94,15 @@ namespace Ionic.Crc
 
                 _TotalBytesRead = 0;
                 int count = input.Read(buffer, 0, readSize);
-                if (output != null) output.Write(buffer, 0, count);
+                if (output != null)
+                    output.Write(buffer, 0, count);
                 _TotalBytesRead += count;
                 while (count > 0)
                 {
                     SlurpBlock(buffer, 0, count);
                     count = input.Read(buffer, 0, readSize);
-                    if (output != null) output.Write(buffer, 0, count);
+                    if (output != null)
+                        output.Write(buffer, 0, count);
                     _TotalBytesRead += count;
                 }
 
@@ -273,7 +274,7 @@ namespace Ionic.Crc
                         crc32Table[i] = dwCrc;
                     }
                     i++;
-                } while (i!=0);
+                } while (i != 0);
             }
 
 #if VERBOSE
@@ -297,10 +298,10 @@ namespace Ionic.Crc
         private uint gf2_matrix_times(uint[] matrix, uint vec)
         {
             uint sum = 0;
-            int i=0;
+            int i = 0;
             while (vec != 0)
             {
-                if ((vec & 0x01)== 0x01)
+                if ((vec & 0x01) == 0x01)
                     sum ^= matrix[i];
                 vec >>= 1;
                 i++;
@@ -335,8 +336,8 @@ namespace Ionic.Crc
             if (length == 0)
                 return;
 
-            uint crc1= ~_register;
-            uint crc2= (uint) crc;
+            uint crc1 = ~_register;
+            uint crc2 = (uint)crc;
 
             // put operator for one zero bit in odd
             odd[0] = this.dwPolynomial;  // the CRC-32 polynomial
@@ -353,15 +354,16 @@ namespace Ionic.Crc
             // put operator for four zero bits in odd
             gf2_matrix_square(odd, even);
 
-            uint len2 = (uint) length;
+            uint len2 = (uint)length;
 
             // apply len2 zeros to crc1 (first square will put the operator for one
             // zero byte, eight zero bits, in even)
-            do {
+            do
+            {
                 // apply zeros operator for this bit of len2
                 gf2_matrix_square(even, odd);
 
-                if ((len2 & 1)== 1)
+                if ((len2 & 1) == 1)
                     crc1 = gf2_matrix_times(even, crc1);
                 len2 >>= 1;
 
@@ -370,7 +372,7 @@ namespace Ionic.Crc
 
                 // another iteration of the loop with odd and even swapped
                 gf2_matrix_square(odd, even);
-                if ((len2 & 1)==1)
+                if ((len2 & 1) == 1)
                     crc1 = gf2_matrix_times(odd, crc1);
                 len2 >>= 1;
 
@@ -379,7 +381,7 @@ namespace Ionic.Crc
 
             crc1 ^= crc2;
 
-            _register= ~crc1;
+            _register = ~crc1;
 
             //return (int) crc1;
             return;
@@ -411,7 +413,7 @@ namespace Ionic.Crc
         ///   </para>
         /// </remarks>
         public CRC32(bool reverseBits) :
-            this( unchecked((int)0xEDB88320), reverseBits)
+            this(unchecked((int)0xEDB88320), reverseBits)
         {
         }
 
@@ -444,7 +446,7 @@ namespace Ionic.Crc
         public CRC32(int polynomial, bool reverseBits)
         {
             this.reverseBits = reverseBits;
-            this.dwPolynomial = (uint) polynomial;
+            this.dwPolynomial = (uint)polynomial;
             this.GenerateLookupTable();
         }
 
@@ -493,12 +495,11 @@ namespace Ionic.Crc
     /// </remarks>
     public class CrcCalculatorStream : System.IO.Stream, IDisposable
     {
-        static readonly Int64 UnsetLengthLimit = -99;
-
-        readonly System.IO.Stream _innerStream;
-        readonly CRC32 _crc32;
-        readonly Int64 _lengthLimit = -99;
-        bool _leaveOpen;
+        private static readonly Int64 UnsetLengthLimit = -99;
+        private readonly System.IO.Stream _innerStream;
+        private readonly CRC32 _crc32;
+        private readonly Int64 _lengthLimit = -99;
+        private bool _leaveOpen;
 
         /// <summary>
         /// The default constructor.
@@ -610,9 +611,10 @@ namespace Ionic.Crc
         // is no length set.  So we validate the length limit in those ctors that use an
         // explicit param, otherwise we don't validate, because it could be our special
         // value.
-        CrcCalculatorStream(bool leaveOpen, Int64 length, System.IO.Stream stream, CRC32 crc32)
+        private CrcCalculatorStream(bool leaveOpen, Int64 length, System.IO.Stream stream, CRC32 crc32)
         {
-            if (stream == null) throw new ArgumentNullException("stream");
+            if (stream == null)
+                throw new ArgumentNullException("stream");
             _innerStream = stream;
             _crc32 = crc32 ?? new CRC32();
             _lengthLimit = length;
@@ -684,12 +686,15 @@ namespace Ionic.Crc
 
             if (_lengthLimit != CrcCalculatorStream.UnsetLengthLimit)
             {
-                if (_crc32.TotalBytesRead >= _lengthLimit) return 0; // EOF
+                if (_crc32.TotalBytesRead >= _lengthLimit)
+                    return 0; // EOF
                 Int64 bytesRemaining = _lengthLimit - _crc32.TotalBytesRead;
-                if (bytesRemaining < count) bytesToRead = (int)bytesRemaining;
+                if (bytesRemaining < count)
+                    bytesToRead = (int)bytesRemaining;
             }
             int n = _innerStream.Read(buffer, offset, bytesToRead);
-            if (n > 0) _crc32.SlurpBlock(buffer, offset, n);
+            if (n > 0)
+                _crc32.SlurpBlock(buffer, offset, n);
             return n;
         }
 
@@ -701,7 +706,8 @@ namespace Ionic.Crc
         /// <param name="count">the number of bytes to write</param>
         public override void Write(byte[] buffer, int offset, int count)
         {
-            if (count > 0) _crc32.SlurpBlock(buffer, offset, count);
+            if (count > 0)
+                _crc32.SlurpBlock(buffer, offset, count);
             _innerStream.Write(buffer, offset, count);
         }
 
@@ -751,7 +757,8 @@ namespace Ionic.Crc
             {
                 if (_lengthLimit == CrcCalculatorStream.UnsetLengthLimit)
                     return _innerStream.Length;
-                else return _lengthLimit;
+                else
+                    return _lengthLimit;
             }
         }
 

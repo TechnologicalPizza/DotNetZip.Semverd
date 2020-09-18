@@ -32,7 +32,7 @@ namespace Ionic.Zlib
 
     internal enum ZlibStreamFlavor { ZLIB = 1950, DEFLATE = 1951, GZIP = 1952 }
 
-    internal class ZlibBaseStream : System.IO.Stream
+    internal class ZlibBaseStream : Stream
     {
         protected internal ZlibCodec _z = null; // deferred init... new ZlibCodec();
 
@@ -46,11 +46,11 @@ namespace Ionic.Zlib
         protected internal int _bufferSize = ZlibConstants.WorkingBufferSizeDefault;
         protected internal byte[] _buf1 = new byte[1];
 
-        protected internal System.IO.Stream _stream;
+        protected internal Stream _stream;
         protected internal CompressionStrategy Strategy = CompressionStrategy.Default;
 
         // workitem 7159
-        Ionic.Crc.CRC32 crc;
+        private Crc.CRC32 crc;
         protected internal string _GzipFileName;
         protected internal string _GzipComment;
         protected internal DateTime _GzipMtime;
@@ -58,7 +58,7 @@ namespace Ionic.Zlib
 
         internal int Crc32 { get { if (crc == null) return 0; return crc.Crc32Result; } }
 
-        public ZlibBaseStream(System.IO.Stream stream,
+        public ZlibBaseStream(Stream stream,
                               CompressionMode compressionMode,
                               CompressionLevel level,
                               ZlibStreamFlavor flavor,
@@ -75,7 +75,7 @@ namespace Ionic.Zlib
             // workitem 7159
             if (flavor == ZlibStreamFlavor.GZIP)
             {
-                this.crc = new Ionic.Crc.CRC32();
+                this.crc = new Crc.CRC32();
             }
         }
 
@@ -172,7 +172,8 @@ namespace Ionic.Zlib
 
         private void finish()
         {
-            if (_z == null) return;
+            if (_z == null)
+                return;
 
             if (_streamMode == StreamMode.Writer)
             {
@@ -306,7 +307,8 @@ namespace Ionic.Zlib
                 return;
             }
 
-            if (_stream == null) return;
+            if (_stream == null)
+                return;
             try
             {
                 finish();
@@ -314,7 +316,8 @@ namespace Ionic.Zlib
             finally
             {
                 end();
-                if (!_leaveOpen) _stream.Dispose();
+                if (!_leaveOpen)
+                    _stream.Dispose();
                 _stream = null;
             }
         }
@@ -324,7 +327,7 @@ namespace Ionic.Zlib
             _stream.Flush();
         }
 
-        public override System.Int64 Seek(System.Int64 offset, System.IO.SeekOrigin origin)
+        public override System.Int64 Seek(System.Int64 offset, SeekOrigin origin)
         {
             throw new NotImplementedException();
             //_outStream.Seek(offset, origin);
@@ -429,7 +432,8 @@ namespace Ionic.Zlib
 
             if (_streamMode == StreamMode.Undefined)
             {
-                if (!this._stream.CanRead) throw new ZlibException("The stream is not readable.");
+                if (!this._stream.CanRead)
+                    throw new ZlibException("The stream is not readable.");
                 // for the first read, set up some controls.
                 _streamMode = StreamMode.Reader;
                 // (The first reference to _z goes through the private accessor which
@@ -447,12 +451,18 @@ namespace Ionic.Zlib
             if (_streamMode != StreamMode.Reader)
                 throw new ZlibException("Cannot Read after Writing.");
 
-            if (count == 0) return 0;
-            if (nomoreinput && _wantCompress) return 0;  // workitem 8557
-            if (buffer == null) throw new ArgumentNullException("buffer");
-            if (count < 0) throw new ArgumentOutOfRangeException("count");
-            if (offset < buffer.GetLowerBound(0)) throw new ArgumentOutOfRangeException("offset");
-            if ((offset + count) > buffer.GetLength(0)) throw new ArgumentOutOfRangeException("count");
+            if (count == 0)
+                return 0;
+            if (nomoreinput && _wantCompress)
+                return 0;  // workitem 8557
+            if (buffer == null)
+                throw new ArgumentNullException("buffer");
+            if (count < 0)
+                throw new ArgumentOutOfRangeException("count");
+            if (offset < buffer.GetLowerBound(0))
+                throw new ArgumentOutOfRangeException("offset");
+            if ((offset + count) > buffer.GetLength(0))
+                throw new ArgumentOutOfRangeException("count");
 
             int rc = 0;
 

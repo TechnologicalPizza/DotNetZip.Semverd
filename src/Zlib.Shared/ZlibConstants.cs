@@ -60,9 +60,6 @@
 //
 // -----------------------------------------------------------------------
 
-
-using System;
-
 namespace Ionic.Zlib
 {
     /// <summary>
@@ -113,7 +110,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// The size of the working buffer used in the ZlibCodec class.
         /// </summary>
-        public const int WorkingBufferSizeDefault = 16384; 
+        public const int WorkingBufferSizeDefault = 16384;
 
         /// <summary>
         /// The minimum size of the working buffer used in the ZlibCodec class.
