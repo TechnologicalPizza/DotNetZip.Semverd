@@ -117,11 +117,11 @@ namespace Ionic.Zlib
 
             private Config(int goodLength, int maxLazy, int niceLength, int maxChainLength, DeflateFlavor flavor)
             {
-                this.GoodLength = goodLength;
-                this.MaxLazy = maxLazy;
-                this.NiceLength = niceLength;
-                this.MaxChainLength = maxChainLength;
-                this.Flavor = flavor;
+                GoodLength = goodLength;
+                MaxLazy = maxLazy;
+                NiceLength = niceLength;
+                MaxChainLength = maxChainLength;
+                Flavor = flavor;
             }
 
             public static Config Lookup(CompressionLevel level)
@@ -1588,8 +1588,8 @@ namespace Ionic.Zlib
             // The middle slice, of 32k, is used for distance codes.
             // The final 16k are length codes.
 
-            this.compressionLevel = level;
-            this.compressionStrategy = strategy;
+            compressionLevel = level;
+            compressionStrategy = strategy;
 
             Reset();
             return ZlibConstants.Z_OK;

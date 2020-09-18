@@ -548,12 +548,12 @@ namespace Ionic.Zlib
         /// </summary>
         public virtual FlushType FlushMode
         {
-            get { return (this._baseStream._flushMode); }
+            get { return (_baseStream._flushMode); }
             set
             {
                 if (_disposed)
                     throw new ObjectDisposedException("GZipStream");
-                this._baseStream._flushMode = value;
+                _baseStream._flushMode = value;
             }
         }
 
@@ -578,17 +578,17 @@ namespace Ionic.Zlib
         {
             get
             {
-                return this._baseStream._bufferSize;
+                return _baseStream._bufferSize;
             }
             set
             {
                 if (_disposed)
                     throw new ObjectDisposedException("GZipStream");
-                if (this._baseStream._workingBuffer != null)
+                if (_baseStream._workingBuffer != null)
                     throw new ZlibException("The working buffer is already set.");
                 if (value < ZlibConstants.WorkingBufferSizeMin)
                     throw new ZlibException(string.Format("Don't be silly. {0} bytes?? Use a bigger buffer, at least {1}.", value, ZlibConstants.WorkingBufferSizeMin));
-                this._baseStream._bufferSize = value;
+                _baseStream._bufferSize = value;
             }
         }
 
@@ -598,7 +598,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return this._baseStream._z.TotalBytesIn;
+                return _baseStream._z.TotalBytesIn;
             }
         }
 
@@ -607,7 +607,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return this._baseStream._z.TotalBytesOut;
+                return _baseStream._z.TotalBytesOut;
             }
         }
 
@@ -644,10 +644,10 @@ namespace Ionic.Zlib
             {
                 if (!_disposed)
                 {
-                    if (disposing && (this._baseStream != null))
+                    if (disposing && (_baseStream != null))
                     {
-                        this._baseStream.Dispose();
-                        this.Crc32 = _baseStream.Crc32;
+                        _baseStream.Dispose();
+                        Crc32 = _baseStream.Crc32;
                     }
                     _disposed = true;
                 }
@@ -736,10 +736,10 @@ namespace Ionic.Zlib
         {
             get
             {
-                if (this._baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
-                    return this._baseStream._z.TotalBytesOut + _headerByteCount;
-                if (this._baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
-                    return this._baseStream._z.TotalBytesIn + this._baseStream._gzipHeaderByteCount;
+                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
+                    return _baseStream._z.TotalBytesOut + _headerByteCount;
+                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
+                    return _baseStream._z.TotalBytesIn + _baseStream._gzipHeaderByteCount;
                 return 0;
             }
 

@@ -139,7 +139,7 @@ namespace Ionic.Crc
             {
                 int x = offset + i;
                 byte b = block[x];
-                if (this.reverseBits)
+                if (reverseBits)
                 {
                     uint temp = (_register >> 24) ^ b;
                     _register = (_register << 8) ^ crc32Table[temp];
@@ -160,7 +160,7 @@ namespace Ionic.Crc
         /// <param name = "b">the byte to include into the CRC .  </param>
         public void UpdateCRC(byte b)
         {
-            if (this.reverseBits)
+            if (reverseBits)
             {
                 uint temp = (_register >> 24) ^ b;
                 _register = (_register << 8) ^ crc32Table[temp];
@@ -190,7 +190,7 @@ namespace Ionic.Crc
         {
             while (n-- > 0)
             {
-                if (this.reverseBits)
+                if (reverseBits)
                 {
                     uint temp = (_register >> 24) ^ b;
                     _register = (_register << 8) ^ crc32Table[(temp >= 0)
@@ -333,7 +333,7 @@ namespace Ionic.Crc
             uint crc2 = (uint)crc;
 
             // put operator for one zero bit in odd
-            odd[0] = this.dwPolynomial;  // the CRC-32 polynomial
+            odd[0] = dwPolynomial;  // the CRC-32 polynomial
             uint row = 1;
             for (int i = 1; i < 32; i++)
             {
@@ -439,8 +439,8 @@ namespace Ionic.Crc
         public CRC32(int polynomial, bool reverseBits)
         {
             this.reverseBits = reverseBits;
-            this.dwPolynomial = (uint)polynomial;
-            this.GenerateLookupTable();
+            dwPolynomial = (uint)polynomial;
+            GenerateLookupTable();
         }
 
         /// <summary>

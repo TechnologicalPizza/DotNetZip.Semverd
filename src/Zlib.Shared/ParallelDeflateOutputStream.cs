@@ -48,16 +48,16 @@ namespace Ionic.Zlib
             CompressionStrategy strategy,
             int ix)
         {
-            this.buffer = new byte[size];
+            buffer = new byte[size];
             // alloc 5 bytes overhead for every block (margin of safety= 2)
             int n = size + ((size / 32768) + 1) * 5 * 2;
-            this.compressed = new byte[n];
-            this.compressor = new ZlibCodec();
-            this.compressor.Strategy = strategy;
-            this.compressor.InitializeDeflate(compressLevel, false);
-            this.compressor.OutputBuffer = this.compressed;
-            this.compressor.InputBuffer = this.buffer;
-            this.index = ix;
+            compressed = new byte[n];
+            compressor = new ZlibCodec();
+            compressor.Strategy = strategy;
+            compressor.InitializeDeflate(compressLevel, false);
+            compressor.OutputBuffer = compressed;
+            compressor.InputBuffer = buffer;
+            index = ix;
         }
     }
 
@@ -292,12 +292,12 @@ namespace Ionic.Zlib
                                            bool leaveOpen)
         {
             TraceOutput(TraceBits.Lifecycle | TraceBits.Session, "-------------------------------------------------------");
-            TraceOutput(TraceBits.Lifecycle | TraceBits.Session, "Create {0:X8}", this.GetHashCode());
+            TraceOutput(TraceBits.Lifecycle | TraceBits.Session, "Create {0:X8}", GetHashCode());
             _outStream = stream;
             _compressLevel = level;
             Strategy = strategy;
             _leaveOpen = leaveOpen;
-            this.MaxBufferPairs = 16; // default
+            MaxBufferPairs = 16; // default
         }
 
 
@@ -728,7 +728,7 @@ namespace Ionic.Zlib
 
         protected override void Dispose(bool disposing)
         {
-            TraceOutput(TraceBits.Lifecycle, "Dispose  {0:X8}", this.GetHashCode());
+            TraceOutput(TraceBits.Lifecycle, "Dispose  {0:X8}", GetHashCode());
 
             if (_pendingException != null)
             {
@@ -803,7 +803,7 @@ namespace Ionic.Zlib
         public void Reset(Stream stream)
         {
             TraceOutput(TraceBits.Session, "-------------------------------------------------------");
-            TraceOutput(TraceBits.Session, "Reset {0:X8} firstDone({1})", this.GetHashCode(), _firstWriteDone);
+            TraceOutput(TraceBits.Session, "Reset {0:X8} firstDone({1})", GetHashCode(), _firstWriteDone);
 
             if (!_firstWriteDone)
                 return;
