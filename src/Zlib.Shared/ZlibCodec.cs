@@ -82,7 +82,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// The buffer from which data is taken.
         /// </summary>
-        public byte[] InputBuffer;
+        public byte[]? InputBuffer;
 
         /// <summary>
         /// An index into the InputBuffer array, indicating where to start reading. 
@@ -130,10 +130,10 @@ namespace Ionic.Zlib
         /// <summary>
         /// used for diagnostics, when something goes wrong!
         /// </summary>
-        public string Message;
+        public string? Message;
 
-        internal DeflateManager dstate;
-        internal InflateManager istate;
+        internal DeflateManager? dstate;
+        internal InflateManager? istate;
 
         internal uint _Adler32;
 
@@ -183,7 +183,9 @@ namespace Ionic.Zlib
         /// InitializeInflate() or InitializeDeflate() before using the ZlibCodec to compress 
         /// or decompress. 
         /// </remarks>
-        public ZlibCodec() { }
+        public ZlibCodec()
+        {
+        }
 
         /// <summary>
         /// Create a ZlibCodec that either compresses or decompresses.
@@ -657,7 +659,7 @@ namespace Ionic.Zlib
         /// at the end of each block to the previous decoded data</remarks>
         /// <param name="dictionary">The dictionary bytes to use.</param>
         /// <returns>Z_OK if all goes well.</returns>
-        public int SetDictionaryUnconditionally(byte[] dictionary)
+        public int SetDictionaryUnconditionally(ReadOnlySpan<byte> dictionary)
         {
             if (istate != null)
                 return istate.SetDictionary(dictionary, true);
@@ -672,8 +674,11 @@ namespace Ionic.Zlib
         // through this function so some applications may wish to modify it
         // to avoid allocating a large strm->next_out buffer and copying into it.
         // (See also read_buf()).
-        internal void flush_pending()
+        internal void FlushPending()
         {
+            if (dstate == null)
+                throw new InvalidOperationException();
+
             int len = dstate.pendingCount;
 
             if (len > AvailableBytesOut)
@@ -703,12 +708,14 @@ namespace Ionic.Zlib
             }
         }
 
-        // Read a new buffer from the current input stream, update the adler32
-        // and total number of bytes read.  All deflate() input goes through
-        // this function so some applications may wish to modify it to avoid
-        // allocating a large strm->next_in buffer and copying from it.
-        // (See also flush_pending()).
-        internal int read_buf(byte[] buf, int start, int size)
+        /// <summary>
+        /// Read a new buffer from the current input stream, update the adler32
+        /// and total number of bytes read.  All deflate() input goes through
+        /// this function so some applications may wish to modify it to avoid
+        /// allocating a large strm->next_in buffer and copying from it.
+        /// (See also flush_pending()).
+        /// </summary>
+        internal int ReadBuf(byte[] buf, int start, int size)
         {
             int len = AvailableBytesIn;
 
@@ -720,9 +727,8 @@ namespace Ionic.Zlib
             AvailableBytesIn -= len;
 
             if (dstate.WantRfc1950HeaderBytes)
-            {
-                _Adler32 = Adler.Adler32(_Adler32, InputBuffer, NextIn, len);
-            }
+                _Adler32 = Adler.Adler32(_Adler32, InputBuffer.AsSpan(NextIn, len));
+
             Array.Copy(InputBuffer, NextIn, buf, start, len);
             NextIn += len;
             TotalBytesIn += len;

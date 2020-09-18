@@ -328,7 +328,7 @@ namespace Ionic.Zlib
         /// </summary>
         public virtual FlushType FlushMode
         {
-            get { return (_baseStream._flushMode); }
+            get { return _baseStream._flushMode; }
             set
             {
                 if (_disposed)
@@ -618,115 +618,5 @@ namespace Ionic.Zlib
             _baseStream.Write(buffer, offset, count);
         }
         #endregion
-
-
-        /// <summary>
-        ///   Compress a string into a byte array using ZLIB.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   Uncompress it with <see cref="UncompressString(byte[])"/>.
-        /// </remarks>
-        ///
-        /// <seealso cref="UncompressString(byte[])"/>
-        /// <seealso cref="CompressBuffer(byte[])"/>
-        /// <seealso cref="GZipStream.CompressString(string)"/>
-        ///
-        /// <param name="s">
-        ///   A string to compress.  The string will first be encoded
-        ///   using UTF8, then compressed.
-        /// </param>
-        ///
-        /// <returns>The string in compressed form</returns>
-        public static byte[] CompressString(string s)
-        {
-            using (var ms = new MemoryStream())
-            {
-                Stream compressor =
-                    new ZlibStream(ms, CompressionMode.Compress, CompressionLevel.BestCompression);
-                ZlibBaseStream.CompressString(s, compressor);
-                return ms.ToArray();
-            }
-        }
-
-
-        /// <summary>
-        ///   Compress a byte array into a new byte array using ZLIB.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   Uncompress it with <see cref="UncompressBuffer(byte[])"/>.
-        /// </remarks>
-        ///
-        /// <seealso cref="CompressString(string)"/>
-        /// <seealso cref="UncompressBuffer(byte[])"/>
-        ///
-        /// <param name="b">
-        /// A buffer to compress.
-        /// </param>
-        ///
-        /// <returns>The data in compressed form</returns>
-        public static byte[] CompressBuffer(byte[] b)
-        {
-            using (var ms = new MemoryStream())
-            {
-                Stream compressor =
-                    new ZlibStream(ms, CompressionMode.Compress, CompressionLevel.BestCompression);
-
-                ZlibBaseStream.CompressBuffer(b, compressor);
-                return ms.ToArray();
-            }
-        }
-
-
-        /// <summary>
-        ///   Uncompress a ZLIB-compressed byte array into a single string.
-        /// </summary>
-        ///
-        /// <seealso cref="CompressString(string)"/>
-        /// <seealso cref="UncompressBuffer(byte[])"/>
-        ///
-        /// <param name="compressed">
-        ///   A buffer containing ZLIB-compressed data.
-        /// </param>
-        ///
-        /// <returns>The uncompressed string</returns>
-        public static string UncompressString(byte[] compressed)
-        {
-            using (var input = new MemoryStream(compressed))
-            {
-                Stream decompressor =
-                    new ZlibStream(input, CompressionMode.Decompress);
-
-                return ZlibBaseStream.UncompressString(compressed, decompressor);
-            }
-        }
-
-
-        /// <summary>
-        ///   Uncompress a ZLIB-compressed byte array into a byte array.
-        /// </summary>
-        ///
-        /// <seealso cref="CompressBuffer(byte[])"/>
-        /// <seealso cref="UncompressString(byte[])"/>
-        ///
-        /// <param name="compressed">
-        ///   A buffer containing ZLIB-compressed data.
-        /// </param>
-        ///
-        /// <returns>The data in uncompressed form</returns>
-        public static byte[] UncompressBuffer(byte[] compressed)
-        {
-            using (var input = new MemoryStream(compressed))
-            {
-                Stream decompressor =
-                    new ZlibStream(input, CompressionMode.Decompress);
-
-                return ZlibBaseStream.UncompressBuffer(compressed, decompressor);
-            }
-        }
-
     }
-
-
 }

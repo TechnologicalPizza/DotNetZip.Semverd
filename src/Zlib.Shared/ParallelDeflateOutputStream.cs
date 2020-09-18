@@ -119,12 +119,12 @@ namespace Ionic.Zlib
         private int _lastFilled;
         private int _lastWritten;
         private int _latestCompressed;
-        private Crc.CRC32 _runningCrc;
+        private Crc.Crc32 _runningCrc;
         private object _latestLock = new object();
         private Queue<int> _toWrite;
         private Queue<int> _toFill;
         private CompressionLevel _compressLevel;
-        private volatile Exception _pendingException;
+        private volatile Exception? _pendingException;
         private bool _handlingException;
         private object _eLock = new object();  // protects _pendingException
 
@@ -480,7 +480,7 @@ namespace Ionic.Zlib
             }
 
             _newlyCompressedBlob = new AutoResetEvent(false);
-            _runningCrc = new Crc.CRC32();
+            _runningCrc = new Crc.Crc32();
             _currentlyFilling = -1;
             _lastFilled = -1;
             _lastWritten = -1;
@@ -745,7 +745,7 @@ namespace Ionic.Zlib
                 return;
 
             Flush(true);
-            _pool = null;
+            _pool = null!;
 
             if (disposing)
             {
@@ -819,7 +819,7 @@ namespace Ionic.Zlib
 
             _firstWriteDone = false;
             BytesProcessed = 0L;
-            _runningCrc = new Crc.CRC32();
+            _runningCrc = new Crc.Crc32();
             _isClosed = false;
             _currentlyFilling = -1;
             _lastFilled = -1;
@@ -939,20 +939,23 @@ namespace Ionic.Zlib
             emitting = false;
         }
 
-        private void DeflateOne(object wi)
+        private void DeflateOne(object? wi)
         {
+            if (wi == null)
+                throw new ArgumentNullException(nameof(wi));
+
             // compress one buffer
-            WorkItem workitem = (WorkItem)wi;
+            var workitem = (WorkItem)wi;
             try
             {
                 int myItem = workitem.index;
-                Crc.CRC32 crc = new Crc.CRC32();
+                var crc = new Crc.Crc32();
 
                 // calc CRC on the buffer
-                crc.SlurpBlock(workitem.buffer, 0, workitem.inputBytesAvailable);
+                crc.SlurpBlock(workitem.buffer.AsSpan(0, workitem.inputBytesAvailable));
 
                 // deflate it
-                DeflateOneSegment(workitem);
+                int rc = DeflateOneSegment(workitem);
 
                 // update status
                 workitem.crc = crc.Crc32Result;
@@ -985,7 +988,7 @@ namespace Ionic.Zlib
             }
         }
 
-        private static bool DeflateOneSegment(WorkItem workitem)
+        private static int DeflateOneSegment(WorkItem workitem)
         {
             ZlibCodec compressor = workitem.compressor;
             compressor.ResetDeflate();
@@ -1006,7 +1009,7 @@ namespace Ionic.Zlib
             int rc = compressor.Deflate(FlushType.Sync);
 
             workitem.compressedBytesAvailable = (int)compressor.TotalBytesOut;
-            return true;
+            return rc;
         }
 
 

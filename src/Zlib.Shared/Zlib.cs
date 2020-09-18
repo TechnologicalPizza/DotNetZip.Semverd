@@ -88,6 +88,7 @@
 
 
 
+using System;
 using Interop = System.Runtime.InteropServices;
 
 namespace Ionic.Zlib
@@ -143,23 +144,16 @@ namespace Ionic.Zlib
     {
         /// <summary>
         /// None means that the data will be simply stored, with no change at all.
-        /// If you are producing ZIPs for use on Mac OSX, be aware that archives produced with CompressionLevel.None
-        /// cannot be opened with the default zip reader. Use a different CompressionLevel.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        /// Same as None.
-        /// </summary>
-        Level0 = 0,
+        Level0 = None,
 
         /// <summary>
         /// The fastest but least effective compression.
         /// </summary>
-        BestSpeed = 1,
+        BestSpeed = Level1,
 
         /// <summary>
-        /// A synonym for BestSpeed.
+        /// The fastest but least effective compression.
         /// </summary>
         Level1 = 1,
 
@@ -186,19 +180,15 @@ namespace Ionic.Zlib
         /// <summary>
         /// The default compression level, with a good balance of speed and compression efficiency.
         /// </summary>
-        Default = 6,
-        /// <summary>
-        /// A synonym for Default.
-        /// </summary>
         Level6 = 6,
 
         /// <summary>
-        /// Pretty good compression!
+        /// Pretty good compression.
         /// </summary>
         Level7 = 7,
 
         /// <summary>
-        ///  Better compression than Level7!
+        ///  Better compression than Level7.
         /// </summary>
         Level8 = 8,
 
@@ -206,12 +196,23 @@ namespace Ionic.Zlib
         /// The "best" compression, where best means greatest reduction in size of the input data stream.
         /// This is also the slowest compression.
         /// </summary>
-        BestCompression = 9,
+        Level9 = 9,
 
         /// <summary>
-        /// A synonym for BestCompression.
+        /// None means that the data will be simply stored, with no change at all.
         /// </summary>
-        Level9 = 9,
+        None = 0,
+
+        /// <summary>
+        /// The default compression level, with a good balance of speed and compression efficiency.
+        /// </summary>
+        Default = Level6,
+
+        /// <summary>
+        /// The "best" compression, where best means greatest reduction in size of the input data stream.
+        /// This is also the slowest compression.
+        /// </summary>
+        BestCompression = Level9,
     }
 
     /// <summary>
@@ -263,7 +264,7 @@ namespace Ionic.Zlib
     /// <summary>
     /// A general purpose exception class for exceptions in the Zlib library.
     /// </summary>
-    public class ZlibException : System.Exception
+    public class ZlibException : Exception
     {
         /// <summary>
         /// The ZlibException class captures exception information generated
@@ -280,6 +281,10 @@ namespace Ionic.Zlib
         /// <param name="s">the message for the exception.</param>
         public ZlibException(string s)
             : base(s)
+        {
+        }
+
+        public ZlibException(string message, Exception? innerException) : base(message, innerException)
         {
         }
     }
@@ -365,7 +370,7 @@ namespace Ionic.Zlib
         internal const int D_CODES = 30;
         internal const int LITERALS = 256;
         internal const int LENGTH_CODES = 29;
-        internal static readonly int L_CODES = (LITERALS + 1 + LENGTH_CODES);
+        internal const int L_CODES = LITERALS + 1 + LENGTH_CODES;
 
         // Bit length codes must not exceed MAX_BL_BITS bits
         internal const int MAX_BL_BITS = 7;
@@ -428,17 +433,17 @@ namespace Ionic.Zlib
             1, 5, 17, 5, 9, 5, 25, 5, 5, 5, 21, 5, 13, 5, 29, 5,
             3, 5, 19, 5, 11, 5, 27, 5, 7, 5, 23, 5 };
 
-        internal static readonly StaticTree Literals;
-        internal static readonly StaticTree Distances;
-        internal static readonly StaticTree BitLengths;
+        internal static StaticTree Literals { get; }
+        internal static StaticTree Distances { get; }
+        internal static StaticTree BitLengths { get; }
 
-        internal short[] treeCodes; // static tree or null
-        internal int[] extraBits;   // extra bits for each code or null
+        internal short[]? treeCodes; // static tree or null
+        internal int[]? extraBits;   // extra bits for each code or null
         internal int extraBase;     // base index for extra_bits
         internal int elems;         // max number of elements in the tree
         internal int maxLength;     // max bit length for the codes
 
-        private StaticTree(short[] treeCodes, int[] extraBits, int extraBase, int elems, int maxLength)
+        private StaticTree(short[]? treeCodes, int[]? extraBits, int extraBase, int elems, int maxLength)
         {
             this.treeCodes = treeCodes;
             this.extraBits = extraBits;
@@ -446,11 +451,20 @@ namespace Ionic.Zlib
             this.elems = elems;
             this.maxLength = maxLength;
         }
+
         static StaticTree()
         {
-            Literals = new StaticTree(lengthAndLiteralsTreeCodes, Tree.ExtraLengthBits, InternalConstants.LITERALS + 1, InternalConstants.L_CODES, InternalConstants.MAX_BITS);
-            Distances = new StaticTree(distTreeCodes, Tree.ExtraDistanceBits, 0, InternalConstants.D_CODES, InternalConstants.MAX_BITS);
-            BitLengths = new StaticTree(null, Tree.extra_blbits, 0, InternalConstants.BL_CODES, InternalConstants.MAX_BL_BITS);
+            Literals = new StaticTree(
+                lengthAndLiteralsTreeCodes, Tree.ExtraLengthBits,
+                InternalConstants.LITERALS + 1, InternalConstants.L_CODES, InternalConstants.MAX_BITS);
+
+            Distances = new StaticTree(
+                distTreeCodes, Tree.ExtraDistanceBits,
+                0, InternalConstants.D_CODES, InternalConstants.MAX_BITS);
+
+            BitLengths = new StaticTree(
+                null, Tree.extra_blbits,
+                0, InternalConstants.BL_CODES, InternalConstants.MAX_BL_BITS);
         }
     }
 
@@ -469,14 +483,13 @@ namespace Ionic.Zlib
     /// <exclude/>
     public sealed class Adler
     {
+        // TODO: vectorize with version from chromium source
+
         // largest prime smaller than 65536
         private const uint BASE = 65521;
+
         // NMAX is the largest n such that 255n(n+1)/2 + (n+1)(BASE-1) <= 2^32-1
         private const int NMAX = 5552;
-
-
-#pragma warning disable 3001
-#pragma warning disable 3002
 
         /// <summary>
         ///   Calculates the Adler32 checksum.
@@ -493,7 +506,7 @@ namespace Ionic.Zlib
         ///    adler = Adler.Adler32(adler, buffer, index, length);
         ///  </code>
         /// </example>
-        public static uint Adler32(uint adler, byte[] buf, int index, int len)
+        public static uint Adler32(uint adler, ReadOnlySpan<byte> buf)
         {
             if (buf == null)
                 return 1;
@@ -501,64 +514,44 @@ namespace Ionic.Zlib
             uint s1 = adler & 0xffff;
             uint s2 = (adler >> 16) & 0xffff;
 
-            while (len > 0)
+            while (buf.Length > 0)
             {
-                int k = len < NMAX ? len : NMAX;
-                len -= k;
-                while (k >= 16)
+                var k = buf.Slice(0, Math.Min(NMAX, buf.Length));
+                buf = buf.Slice(k.Length);
+
+                while (k.Length >= 16)
                 {
-                    //s1 += (buf[index++] & 0xff); s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    s1 += buf[index++];
-                    s2 += s1;
-                    k -= 16;
+                    s2 += s1 += k[0];
+                    s2 += s1 += k[1];
+                    s2 += s1 += k[2];
+                    s2 += s1 += k[3];
+                    s2 += s1 += k[4];
+                    s2 += s1 += k[5];
+                    s2 += s1 += k[6];
+                    s2 += s1 += k[7];
+                    s2 += s1 += k[8];
+                    s2 += s1 += k[9];
+                    s2 += s1 += k[10];
+                    s2 += s1 += k[11];
+                    s2 += s1 += k[12];
+                    s2 += s1 += k[13];
+                    s2 += s1 += k[14];
+                    s2 += s1 += k[15];
+
+                    k = k.Slice(16);
                 }
-                if (k != 0)
+
+                for (int i = 0; i < k.Length; i++)
                 {
-                    do
-                    {
-                        s1 += buf[index++];
-                        s2 += s1;
-                    }
-                    while (--k != 0);
+                    s1 += k[i];
+                    s2 += s1;
                 }
+
                 s1 %= BASE;
                 s2 %= BASE;
             }
             return (s2 << 16) | s1;
         }
-#pragma warning restore 3001
-#pragma warning restore 3002
-
     }
 
 }

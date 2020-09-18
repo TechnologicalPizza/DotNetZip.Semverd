@@ -319,7 +319,7 @@ namespace Ionic.Zlib
         /// </remarks>
         public virtual FlushType FlushMode
         {
-            get { return (_baseStream._flushMode); }
+            get { return _baseStream._flushMode; }
             set
             {
                 if (_disposed)
@@ -504,11 +504,11 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        /// Reading this property always throws a <see cref="NotImplementedException"/>.
+        /// Reading this property always throws a <see cref="NotSupportedException"/>.
         /// </summary>
         public override long Length
         {
-            get { throw new NotImplementedException(); }
+            get { throw new NotSupportedException(); }
         }
 
         /// <summary>
@@ -516,10 +516,10 @@ namespace Ionic.Zlib
         /// </summary>
         ///
         /// <remarks>
-        ///   Setting this property always throws a <see
-        ///   cref="NotImplementedException"/>. Reading will return the total bytes
-        ///   written out, if used in writing, or the total bytes read in, if used in
-        ///   reading.  The count may refer to compressed bytes or uncompressed bytes,
+        ///   Setting this property always throws a <see cref="NotSupportedException"/>. 
+        ///   Reading will return the total bytes written out, if used in writing,
+        ///   or the total bytes read in, if used in reading. 
+        ///   The count may refer to compressed bytes or uncompressed bytes,
         ///   depending on how you've used the stream.
         /// </remarks>
         public override long Position
@@ -532,7 +532,7 @@ namespace Ionic.Zlib
                     return _baseStream._z.TotalBytesIn;
                 return 0;
             }
-            set { throw new NotImplementedException(); }
+            set { throw new NotSupportedException(); }
         }
 
         /// <summary>
@@ -624,124 +624,8 @@ namespace Ionic.Zlib
                 throw new ObjectDisposedException("DeflateStream");
             _baseStream.Write(buffer, offset, count);
         }
+
         #endregion
-
-
-
-
-        /// <summary>
-        ///   Compress a string into a byte array using DEFLATE (RFC 1951).
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   Uncompress it with <see cref="UncompressString(byte[])"/>.
-        /// </remarks>
-        ///
-        /// <seealso cref="UncompressString(byte[])">DeflateStream.UncompressString(byte[])</seealso>
-        /// <seealso cref="CompressBuffer(byte[])">DeflateStream.CompressBuffer(byte[])</seealso>
-        /// <seealso cref="GZipStream.CompressString(string)">GZipStream.CompressString(string)</seealso>
-        /// <seealso cref="ZlibStream.CompressString(string)">ZlibStream.CompressString(string)</seealso>
-        ///
-        /// <param name="s">
-        ///   A string to compress. The string will first be encoded
-        ///   using UTF8, then compressed.
-        /// </param>
-        ///
-        /// <returns>The string in compressed form</returns>
-        public static byte[] CompressString(string s)
-        {
-            using (var ms = new System.IO.MemoryStream())
-            {
-                System.IO.Stream compressor =
-                    new DeflateStream(ms, CompressionMode.Compress, CompressionLevel.BestCompression);
-                ZlibBaseStream.CompressString(s, compressor);
-                return ms.ToArray();
-            }
-        }
-
-
-        /// <summary>
-        ///   Compress a byte array into a new byte array using DEFLATE.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   Uncompress it with <see cref="UncompressBuffer(byte[])"/>.
-        /// </remarks>
-        ///
-        /// <seealso cref="CompressString(string)">DeflateStream.CompressString(string)</seealso>
-        /// <seealso cref="UncompressBuffer(byte[])">DeflateStream.UncompressBuffer(byte[])</seealso>
-        /// <seealso cref="GZipStream.CompressBuffer(byte[])">GZipStream.CompressBuffer(byte[])</seealso>
-        /// <seealso cref="ZlibStream.CompressBuffer(byte[])">ZlibStream.CompressBuffer(byte[])</seealso>
-        ///
-        /// <param name="b">
-        ///   A buffer to compress.
-        /// </param>
-        ///
-        /// <returns>The data in compressed form</returns>
-        public static byte[] CompressBuffer(byte[] b)
-        {
-            using (var ms = new System.IO.MemoryStream())
-            {
-                System.IO.Stream compressor =
-                    new DeflateStream(ms, CompressionMode.Compress, CompressionLevel.BestCompression);
-
-                ZlibBaseStream.CompressBuffer(b, compressor);
-                return ms.ToArray();
-            }
-        }
-
-
-        /// <summary>
-        ///   Uncompress a DEFLATE'd byte array into a single string.
-        /// </summary>
-        ///
-        /// <seealso cref="CompressString(string)">DeflateStream.CompressString(String)</seealso>
-        /// <seealso cref="UncompressBuffer(byte[])">DeflateStream.UncompressBuffer(byte[])</seealso>
-        /// <seealso cref="GZipStream.UncompressString(byte[])">GZipStream.UncompressString(byte[])</seealso>
-        /// <seealso cref="ZlibStream.UncompressString(byte[])">ZlibStream.UncompressString(byte[])</seealso>
-        ///
-        /// <param name="compressed">
-        ///   A buffer containing DEFLATE-compressed data.
-        /// </param>
-        ///
-        /// <returns>The uncompressed string</returns>
-        public static string UncompressString(byte[] compressed)
-        {
-            using (var input = new System.IO.MemoryStream(compressed))
-            {
-                System.IO.Stream decompressor =
-                    new DeflateStream(input, CompressionMode.Decompress);
-
-                return ZlibBaseStream.UncompressString(compressed, decompressor);
-            }
-        }
-
-
-        /// <summary>
-        ///   Uncompress a DEFLATE'd byte array into a byte array.
-        /// </summary>
-        ///
-        /// <seealso cref="CompressBuffer(byte[])">DeflateStream.CompressBuffer(byte[])</seealso>
-        /// <seealso cref="UncompressString(byte[])">DeflateStream.UncompressString(byte[])</seealso>
-        /// <seealso cref="GZipStream.UncompressBuffer(byte[])">GZipStream.UncompressBuffer(byte[])</seealso>
-        /// <seealso cref="ZlibStream.UncompressBuffer(byte[])">ZlibStream.UncompressBuffer(byte[])</seealso>
-        ///
-        /// <param name="compressed">
-        ///   A buffer containing data that has been compressed with DEFLATE.
-        /// </param>
-        ///
-        /// <returns>The data in uncompressed form</returns>
-        public static byte[] UncompressBuffer(byte[] compressed)
-        {
-            using (var input = new System.IO.MemoryStream(compressed))
-            {
-                System.IO.Stream decompressor =
-                    new DeflateStream(input, CompressionMode.Decompress);
-
-                return ZlibBaseStream.UncompressBuffer(compressed, decompressor);
-            }
-        }
-
     }
 
 }

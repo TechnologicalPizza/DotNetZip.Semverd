@@ -106,14 +106,14 @@ namespace Ionic.Zlib
         // If BMAX needs to be larger than 16, then h and x[] should be uLong.
         internal const int BMAX = 15; // maximum bit length of any code
 
-        internal int[] hn = null; // hufts used in space
-        internal int[] v = null; // work area for huft_build 
-        internal int[] c = null; // bit length count table
-        internal int[] r = null; // table entry for structure assignment
-        internal int[] u = null; // table stack
-        internal int[] x = null; // bit offsets, then code stack
+        internal int[] hn; // hufts used in space
+        internal int[] v; // work area for huft_build 
+        internal int[] c; // bit length count table
+        internal int[] r; // table entry for structure assignment
+        internal int[] u; // table stack
+        internal int[] x; // bit offsets, then code stack
 
-        private int huft_build(int[] b, int bindex, int n, int s, int[] d, int[] e, int[] t, int[] m, int[] hp, int[] hn, int[] v)
+        private int huft_build(int[] b, int bindex, int n, int s, int[] d, int[] e, ref int t, ref int m, int[] hp, int[] hn, int[] v)
         {
             // Given a list of code lengths and a maximum table size, make a set of
             // tables to decode that set of codes.  Return Z_OK on success, Z_BUF_ERROR
@@ -152,13 +152,13 @@ namespace Ionic.Zlib
             if (c[0] == n)
             {
                 // null input--all zero length codes
-                t[0] = -1;
-                m[0] = 0;
+                t = -1;
+                m = 0;
                 return Z_OK;
             }
 
             // Find minimum and maximum length, bound *m by those
-            l = m[0];
+            l = m;
             for (j = 1; j <= BMAX; j++)
                 if (c[j] != 0)
                     break;
@@ -177,7 +177,7 @@ namespace Ionic.Zlib
             {
                 l = i;
             }
-            m[0] = l;
+            m = l;
 
             // Adjust last length count to fill out codes, if needed
             for (y = 1 << j; j < i; j++, y <<= 1)
@@ -200,7 +200,7 @@ namespace Ionic.Zlib
             while (--i != 0)
             {
                 // note that i == g from above
-                x[xp] = (j += c[p]);
+                x[xp] = j += c[p];
                 xp++;
                 p++;
             }
@@ -247,7 +247,7 @@ namespace Ionic.Zlib
                         {
                             // try a k-w bit table
                             // too few codes for k-w bit table
-                            f -= (a + 1); // deduct codes from patterns left
+                            f -= a + 1; // deduct codes from patterns left
                             xp = k;
                             if (j < z)
                             {
@@ -277,13 +277,13 @@ namespace Ionic.Zlib
                             x[h] = i; // save pattern for backing up
                             r[0] = (sbyte)j; // bits in this table
                             r[1] = (sbyte)l; // bits to dump before this table
-                            j = SharedUtils.URShift(i, (w - l));
+                            j = SharedUtils.URShift(i, w - l);
                             r[2] = q - u[h - 1] - j; // offset to this table
                             Array.Copy(r, 0, hp, (u[h - 1] + j) * 3, 3); // connect to last table
                         }
                         else
                         {
-                            t[0] = q; // first table is returned result
+                            t = q; // first table is returned result
                         }
                     }
 
@@ -332,18 +332,18 @@ namespace Ionic.Zlib
             return y != 0 && g != 1 ? Z_BUF_ERROR : Z_OK;
         }
 
-        internal int inflate_trees_bits(int[] c, int[] bb, int[] tb, int[] hp, ZlibCodec z)
+        internal int inflate_trees_bits(int[] c, ref int bb, ref int tb, int[] hp, ZlibCodec z)
         {
             int result;
             initWorkArea(19);
             hn[0] = 0;
-            result = huft_build(c, 0, 19, 19, null, null, tb, bb, hp, hn, v);
+            result = huft_build(c, 0, 19, 19, null, null, ref tb, ref bb, hp, hn, v);
 
             if (result == Z_DATA_ERROR)
             {
                 z.Message = "oversubscribed dynamic bit lengths tree";
             }
-            else if (result == Z_BUF_ERROR || bb[0] == 0)
+            else if (result == Z_BUF_ERROR || bb == 0)
             {
                 z.Message = "incomplete dynamic bit lengths tree";
                 result = Z_DATA_ERROR;
@@ -351,15 +351,15 @@ namespace Ionic.Zlib
             return result;
         }
 
-        internal int inflate_trees_dynamic(int nl, int nd, int[] c, int[] bl, int[] bd, int[] tl, int[] td, int[] hp, ZlibCodec z)
+        internal int inflate_trees_dynamic(int nl, int nd, int[] c, ref int bl, ref int bd, ref int tl, ref int td, int[] hp, ZlibCodec z)
         {
             int result;
 
             // build literal/length tree
             initWorkArea(288);
             hn[0] = 0;
-            result = huft_build(c, 0, nl, 257, cplens, cplext, tl, bl, hp, hn, v);
-            if (result != Z_OK || bl[0] == 0)
+            result = huft_build(c, 0, nl, 257, cplens, cplext, ref tl, ref bl, hp, hn, v);
+            if (result != Z_OK || bl == 0)
             {
                 if (result == Z_DATA_ERROR)
                 {
@@ -375,9 +375,9 @@ namespace Ionic.Zlib
 
             // build distance tree
             initWorkArea(288);
-            result = huft_build(c, nl, nd, 0, cpdist, cpdext, td, bd, hp, hn, v);
+            result = huft_build(c, nl, nd, 0, cpdist, cpdext, ref td, ref bd, hp, hn, v);
 
-            if (result != Z_OK || (bd[0] == 0 && nl > 257))
+            if (result != Z_OK || (bd == 0 && nl > 257))
             {
                 if (result == Z_DATA_ERROR)
                 {
@@ -399,12 +399,12 @@ namespace Ionic.Zlib
             return Z_OK;
         }
 
-        internal static int inflate_trees_fixed(int[] bl, int[] bd, int[][] tl, int[][] td, ZlibCodec z)
+        internal static int inflate_trees_fixed(ref int bl, ref int bd, out int[] tl, out int[] td, ZlibCodec z)
         {
-            bl[0] = fixed_bl;
-            bd[0] = fixed_bd;
-            tl[0] = fixed_tl;
-            td[0] = fixed_td;
+            bl = fixed_bl;
+            bd = fixed_bd;
+            tl = fixed_tl;
+            td = fixed_td;
             return Z_OK;
         }
 

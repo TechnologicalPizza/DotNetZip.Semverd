@@ -64,7 +64,7 @@ namespace Ionic.Zlib
 {
     internal sealed class Tree
     {
-        private static readonly int HEAP_SIZE = (2 * InternalConstants.L_CODES + 1);
+        private const int HEAP_SIZE = 2 * InternalConstants.L_CODES + 1;
 
         // extra bits for each length code
         internal static readonly int[] ExtraLengthBits = new int[]
@@ -313,7 +313,7 @@ namespace Ionic.Zlib
             // two codes of non zero frequency.
             while (s.heap_len < 2)
             {
-                node = s.heap[++s.heap_len] = (max_code < 2 ? ++max_code : 0);
+                node = s.heap[++s.heap_len] = max_code < 2 ? ++max_code : 0;
                 tree[node * 2] = 1;
                 s.depth[node] = 0;
                 s.opt_len--;
@@ -327,7 +327,7 @@ namespace Ionic.Zlib
             // establish sub-heaps of increasing lengths:
 
             for (n = s.heap_len / 2; n >= 1; n--)
-                s.pqdownheap(tree, n);
+                s.Pqdownheap(tree, n);
 
             // Construct the Huffman tree by repeatedly combining the least two
             // frequent nodes.
@@ -338,7 +338,7 @@ namespace Ionic.Zlib
                 // n = node of least frequency
                 n = s.heap[1];
                 s.heap[1] = s.heap[s.heap_len--];
-                s.pqdownheap(tree, 1);
+                s.Pqdownheap(tree, 1);
                 m = s.heap[1]; // m = node of next least frequency
 
                 s.heap[--s.heap_max] = n; // keep the nodes sorted by frequency
@@ -351,7 +351,7 @@ namespace Ionic.Zlib
 
                 // and insert the new node in the heap
                 s.heap[1] = node++;
-                s.pqdownheap(tree, 1);
+                s.Pqdownheap(tree, 1);
             }
             while (s.heap_len >= 2);
 
@@ -399,7 +399,7 @@ namespace Ionic.Zlib
                 if (len == 0)
                     continue;
                 // Now reverse the bits
-                tree[n * 2] = unchecked((short)(bi_reverse(next_code[len]++, len)));
+                tree[n * 2] = unchecked((short)bi_reverse(next_code[len]++, len));
             }
         }
 
