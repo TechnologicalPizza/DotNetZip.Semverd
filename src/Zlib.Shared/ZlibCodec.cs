@@ -136,7 +136,7 @@ namespace Ionic.Zlib
         internal DeflateManager? dstate;
         internal InflateManager? istate;
 
-        internal uint _Adler32;
+        internal uint _adler32;
 
         /// <summary>
         /// The compression level to use in this codec.  Useful only in compression mode.
@@ -173,7 +173,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// The Adler32 checksum on the data transferred through the codec so far. You probably don't need to look at this.
         /// </summary>
-        public int Adler32 { get { return (int)_Adler32; } }
+        public int Adler32 { get { return (int)_adler32; } }
 
 
         /// <summary>
@@ -351,12 +351,12 @@ namespace Ionic.Zlib
         /// </example>
         /// <param name="flush">The flush to use when inflating.</param>
         /// <returns>Z_OK if everything goes well.</returns>
-        public ZlibCode Inflate(FlushType flush)
+        public ZlibCode Inflate(FlushType flush, Span<byte> output, out int written)
         {
             if (istate == null)
                 throw new ZlibException("No Inflate State!");
 
-            return istate.Inflate(flush);
+            return istate.Inflate(flush, output, out written);
         }
 
 
@@ -734,7 +734,7 @@ namespace Ionic.Zlib
                 return 0;
 
             if (dstate.WantRfc1950HeaderBytes)
-                _Adler32 = Adler.Adler32(_Adler32, input);
+                _adler32 = Adler.Adler32(_adler32, input);
 
             input.CopyTo(output);
 

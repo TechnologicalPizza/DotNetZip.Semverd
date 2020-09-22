@@ -163,7 +163,7 @@ namespace Ionic.Zlib
                 _z.AvailableBytesOut = _workingBuffer.Length;
 
                 int consumed = 0;
-                int written = 0;
+                int written;
 
                 ZlibCode rc = WantCompress
                     ? _z.Deflate(
@@ -171,7 +171,10 @@ namespace Ionic.Zlib
                         _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
                         _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
                         out consumed, out written)
-                    : _z.Inflate(_flushMode);
+                    : _z.Inflate(
+                        _flushMode,
+                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                        out written);
 
                 _z.NextIn += consumed;
                 _z.NextOut += written;
@@ -211,7 +214,7 @@ namespace Ionic.Zlib
                     _z.AvailableBytesOut = _workingBuffer.Length;
 
                     int consumed = 0;
-                    int written = 0;
+                    int written;
 
                     ZlibCode rc = WantCompress
                         ? _z.Deflate(
@@ -219,7 +222,10 @@ namespace Ionic.Zlib
                             _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
                             _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
                             out consumed, out written)
-                        : _z.Inflate(FlushType.Finish);
+                        : _z.Inflate(
+                            FlushType.Finish,
+                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                            out written);
 
                     _z.NextIn += consumed;
                     _z.NextOut += written;
@@ -523,7 +529,7 @@ namespace Ionic.Zlib
                 // we have data in InputBuffer; now compress or decompress as appropriate
 
                 int consumed = 0;
-                int written = 0;
+                int written;
 
                 rc = WantCompress
                     ? _z.Deflate(
@@ -531,7 +537,10 @@ namespace Ionic.Zlib
                         _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
                         _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
                         out consumed, out written)
-                    : _z.Inflate(_flushMode);
+                    : _z.Inflate(
+                        _flushMode,
+                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                        out written);
 
                 _z.NextIn += consumed;
                 _z.NextOut += written;

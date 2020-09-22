@@ -1688,7 +1688,7 @@ namespace Ionic.Zlib
             Rfc1950BytesEmitted = false;
 
             status = WantRfc1950HeaderBytes ? INIT_STATE : BUSY_STATE;
-            _codec._Adler32 = Adler.Adler32(0, default);
+            _codec._adler32 = Adler.Adler32(0, default);
 
             last_flush = (int)FlushType.None;
 
@@ -1774,7 +1774,7 @@ namespace Ionic.Zlib
             if (status != INIT_STATE)
                 throw new ZlibException("Stream error.");
 
-            _codec._Adler32 = Adler.Adler32(_codec._Adler32, dictionary);
+            _codec._adler32 = Adler.Adler32(_codec._adler32, dictionary);
 
             if (length < MIN_MATCH)
                 return ZlibCode.Z_OK;
@@ -1847,12 +1847,12 @@ namespace Ionic.Zlib
                 // Save the adler32 of the preset dictionary:
                 if (strstart != 0)
                 {
-                    pending[pendingCount++] = (byte)((_codec._Adler32 & 0xFF000000) >> 24);
-                    pending[pendingCount++] = (byte)((_codec._Adler32 & 0x00FF0000) >> 16);
-                    pending[pendingCount++] = (byte)((_codec._Adler32 & 0x0000FF00) >> 8);
-                    pending[pendingCount++] = (byte)(_codec._Adler32 & 0x000000FF);
+                    pending[pendingCount++] = (byte)((_codec._adler32 & 0xFF000000) >> 24);
+                    pending[pendingCount++] = (byte)((_codec._adler32 & 0x00FF0000) >> 16);
+                    pending[pendingCount++] = (byte)((_codec._adler32 & 0x0000FF00) >> 8);
+                    pending[pendingCount++] = (byte)(_codec._adler32 & 0x000000FF);
                 }
-                _codec._Adler32 = Adler.Adler32(0, default);
+                _codec._adler32 = Adler.Adler32(0, default);
             }
 
             int fwritten;
@@ -1976,10 +1976,10 @@ namespace Ionic.Zlib
                 return ZlibCode.Z_STREAM_END;
 
             // Write the zlib trailer (adler32)
-            pending[pendingCount++] = (byte)((_codec._Adler32 & 0xFF000000) >> 24);
-            pending[pendingCount++] = (byte)((_codec._Adler32 & 0x00FF0000) >> 16);
-            pending[pendingCount++] = (byte)((_codec._Adler32 & 0x0000FF00) >> 8);
-            pending[pendingCount++] = (byte)(_codec._Adler32 & 0x000000FF);
+            pending[pendingCount++] = (byte)((_codec._adler32 & 0xFF000000) >> 24);
+            pending[pendingCount++] = (byte)((_codec._adler32 & 0x00FF0000) >> 16);
+            pending[pendingCount++] = (byte)((_codec._adler32 & 0x0000FF00) >> 8);
+            pending[pendingCount++] = (byte)(_codec._adler32 & 0x000000FF);
             //putShortMSB((int)(SharedUtils.URShift(_codec._Adler32, 16)));
             //putShortMSB((int)(_codec._Adler32 & 0xffff));
 
