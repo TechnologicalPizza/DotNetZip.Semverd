@@ -92,7 +92,9 @@ namespace Ionic.Zlib
         private const int MEM_LEVEL_MAX = 9;
         private const int MEM_LEVEL_DEFAULT = 8;
 
-        internal delegate BlockState CompressFunc(FlushType flush);
+        internal delegate BlockState CompressFunc(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
+            out int consumed, out int written);
 
         internal class Config
         {
@@ -920,6 +922,7 @@ namespace Ionic.Zlib
             last_eob_len = 8; // enough lookahead for inflate
 
             if (header)
+            {
                 unchecked
                 {
                     //put_short((short)len);
@@ -929,15 +932,15 @@ namespace Ionic.Zlib
                     pending[pendingCount++] = (byte)~len;
                     pending[pendingCount++] = (byte)(~len >> 8);
                 }
-
+            }
             PutBytes(window, buf, len);
         }
 
-        internal void FlushBlockOnly(bool eof)
+        internal void FlushBlockOnly(bool eof, Span<byte> output, out int written)
         {
             TrFlushBlock(block_start >= 0 ? block_start : -1, strstart - block_start, eof);
             block_start = strstart;
-            _codec.FlushPending();
+            _codec.FlushPending(output, out written);
         }
 
         /// <summary>
@@ -947,7 +950,9 @@ namespace Ionic.Zlib
         /// uncompressible data is probably not useful. This function is used
         /// only for the level=0 compression option.
         /// </summary>
-        internal BlockState DeflateNone(FlushType flush)
+        internal BlockState DeflateNone(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output, 
+            out int consumed, out int written)
         {
             // NOTE: this function should be optimized to avoid extra copying from
             // window to pending_buf.
@@ -957,6 +962,10 @@ namespace Ionic.Zlib
 
             int max_block_size = 0xffff;
             int max_start;
+            int fwritten;
+
+            consumed = 0;
+            written = 0;
 
             if (max_block_size > pending.Length - 5)
                 max_block_size = pending.Length - 5;
@@ -967,7 +976,10 @@ namespace Ionic.Zlib
                 // Fill the window as much as possible:
                 if (lookahead <= 1)
                 {
-                    FillWindow();
+                    FillWindow(input, out int fconsumed);
+                    input = input.Slice(fconsumed);
+                    consumed += fconsumed;
+
                     if (lookahead == 0 && flush == FlushType.None)
                         return BlockState.NeedMore;
                     if (lookahead == 0)
@@ -985,8 +997,11 @@ namespace Ionic.Zlib
                     lookahead = strstart - max_start;
                     strstart = max_start;
 
-                    FlushBlockOnly(false);
-                    if (_codec.AvailableBytesOut == 0)
+                    FlushBlockOnly(false, output, out fwritten);
+                    output = output.Slice(fwritten);
+                    written += fwritten;
+
+                    if (output.Length == 0)
                         return BlockState.NeedMore;
                 }
 
@@ -994,14 +1009,20 @@ namespace Ionic.Zlib
                 // negative and the data will be gone:
                 if (strstart - block_start >= w_size - MIN_LOOKAHEAD)
                 {
-                    FlushBlockOnly(false);
-                    if (_codec.AvailableBytesOut == 0)
+                    FlushBlockOnly(false, output, out fwritten);
+                    output = output.Slice(fwritten);
+                    written += fwritten;
+
+                    if (output.Length == 0)
                         return BlockState.NeedMore;
                 }
             }
 
-            FlushBlockOnly(flush == FlushType.Finish);
-            if (_codec.AvailableBytesOut == 0)
+            FlushBlockOnly(flush == FlushType.Finish, output, out fwritten);
+            output = output.Slice(fwritten);
+            written += fwritten;
+
+            if (output.Length == 0)
                 return (flush == FlushType.Finish) ? BlockState.FinishStarted : BlockState.NeedMore;
 
             return flush == FlushType.Finish ? BlockState.FinishDone : BlockState.BlockDone;
@@ -1097,12 +1118,14 @@ namespace Ionic.Zlib
         //    At least one byte has been read, or avail_in == 0; reads are
         //    performed for at least two bytes (required for the zip translate_eol
         //    option -- not supported here).
-        private void FillWindow()
+        private void FillWindow(ReadOnlySpan<byte> input, out int consumed)
         {
-            int n, m;
+            int n;
             int p;
+            int m;
             int more; // Amount of free space at the end of the window.
 
+            consumed = 0;
             do
             {
                 more = window_size - lookahead - strstart;
@@ -1156,7 +1179,7 @@ namespace Ionic.Zlib
                     more += w_size;
                 }
 
-                if (_codec.AvailableBytesIn == 0)
+                if (input.Length == 0)
                     return;
 
                 // If there was no sliding:
@@ -1170,7 +1193,10 @@ namespace Ionic.Zlib
                 // Otherwise, window_size == 2*WSIZE so more >= 2.
                 // If there was sliding, more >= WSIZE. So in all cases, more >= 2.
 
-                n = _codec.ReadBuf(window, strstart + lookahead, more);
+                n = _codec.ReadBuf(input, window.AsSpan(strstart + lookahead, more));
+                input = input.Slice(n);
+                consumed += n;
+
                 lookahead += n;
 
                 // Initialize the hash value now that we have some input:
@@ -1182,7 +1208,7 @@ namespace Ionic.Zlib
                 // If the whole input has less than MIN_MATCH bytes, ins_h is garbage,
                 // but this is not important since only literal bytes will be emitted.
             }
-            while (lookahead < MIN_LOOKAHEAD && _codec.AvailableBytesIn != 0);
+            while (lookahead < MIN_LOOKAHEAD && input.Length != 0);
         }
 
         // Compress as much as possible from the input stream, return the current
@@ -1190,11 +1216,17 @@ namespace Ionic.Zlib
         // This function does not perform lazy evaluation of matches and inserts
         // new strings in the dictionary only for unmatched strings or for short
         // matches. It is used only for the fast compression options.
-        internal BlockState DeflateFast(FlushType flush)
+        internal BlockState DeflateFast(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
+            out int consumed, out int written)
         {
             //    short hash_head = 0; // head of the hash chain
             int hash_head = 0; // head of the hash chain
             bool bflush; // set if current block must be flushed
+            int fwritten;
+
+            consumed = 0;
+            written = 0;
 
             while (true)
             {
@@ -1204,11 +1236,13 @@ namespace Ionic.Zlib
                 // string following the next match.
                 if (lookahead < MIN_LOOKAHEAD)
                 {
-                    FillWindow();
+                    FillWindow(input, out int fconsumed);
+                    input = input.Slice(fconsumed);
+                    consumed += fconsumed;
+                    
                     if (lookahead < MIN_LOOKAHEAD && flush == FlushType.None)
-                    {
                         return BlockState.NeedMore;
-                    }
+
                     if (lookahead == 0)
                         break; // flush the current block
                 }
@@ -1289,14 +1323,20 @@ namespace Ionic.Zlib
                 }
                 if (bflush)
                 {
-                    FlushBlockOnly(false);
-                    if (_codec.AvailableBytesOut == 0)
+                    FlushBlockOnly(false, output, out fwritten);
+                    output = output.Slice(fwritten);
+                    written += fwritten;
+
+                    if (output.Length == 0)
                         return BlockState.NeedMore;
                 }
             }
 
-            FlushBlockOnly(flush == FlushType.Finish);
-            if (_codec.AvailableBytesOut == 0)
+            FlushBlockOnly(flush == FlushType.Finish, output, out fwritten);
+            output = output.Slice(fwritten);
+            written += fwritten;
+
+            if (output.Length == 0)
             {
                 if (flush == FlushType.Finish)
                     return BlockState.FinishStarted;
@@ -1309,11 +1349,17 @@ namespace Ionic.Zlib
         // Same as above, but achieves better compression. We use a lazy
         // evaluation for matches: a match is finally adopted only if there is
         // no better match at the next window position.
-        internal BlockState DeflateSlow(FlushType flush)
+        internal BlockState DeflateSlow(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
+            out int consumed, out int written)
         {
             //    short hash_head = 0;    // head of hash chain
             int hash_head = 0; // head of hash chain
             bool bflush; // set if current block must be flushed
+            int fwritten;
+
+            consumed = 0;
+            written = 0;
 
             // Process the input block.
             while (true)
@@ -1325,7 +1371,10 @@ namespace Ionic.Zlib
 
                 if (lookahead < MIN_LOOKAHEAD)
                 {
-                    FillWindow();
+                    FillWindow(input, out int fconsumed);
+                    input = input.Slice(fconsumed);
+                    consumed += fconsumed;
+                    
                     if (lookahead < MIN_LOOKAHEAD && flush == FlushType.None)
                         return BlockState.NeedMore;
 
@@ -1408,8 +1457,11 @@ namespace Ionic.Zlib
 
                     if (bflush)
                     {
-                        FlushBlockOnly(false);
-                        if (_codec.AvailableBytesOut == 0)
+                        FlushBlockOnly(false, output, out fwritten);
+                        output = output.Slice(fwritten);
+                        written += fwritten;
+
+                        if (output.Length == 0)
                             return BlockState.NeedMore;
                     }
                 }
@@ -1424,11 +1476,14 @@ namespace Ionic.Zlib
 
                     if (bflush)
                     {
-                        FlushBlockOnly(false);
+                        FlushBlockOnly(false, output, out fwritten);
+                        output = output.Slice(fwritten);
+                        written += fwritten;
                     }
+
                     strstart++;
                     lookahead--;
-                    if (_codec.AvailableBytesOut == 0)
+                    if (output.Length == 0)
                         return BlockState.NeedMore;
                 }
                 else
@@ -1447,9 +1502,12 @@ namespace Ionic.Zlib
                 TrTally(0, window[strstart - 1] & 0xff);
                 match_available = 0;
             }
-            FlushBlockOnly(flush == FlushType.Finish);
 
-            if (_codec.AvailableBytesOut == 0)
+            FlushBlockOnly(flush == FlushType.Finish, output, out fwritten);
+            output = output.Slice(fwritten);
+            written += fwritten;
+
+            if (output.Length == 0)
             {
                 if (flush == FlushType.Finish)
                     return BlockState.FinishStarted;
@@ -1550,22 +1608,24 @@ namespace Ionic.Zlib
         }
 
 
-        internal int Initialize(ZlibCodec codec, CompressionLevel level)
+        internal ZlibCode Initialize(ZlibCodec codec, CompressionLevel level)
         {
             return Initialize(codec, level, ZlibConstants.WindowBitsMax);
         }
 
-        internal int Initialize(ZlibCodec codec, CompressionLevel level, int bits)
+        internal ZlibCode Initialize(ZlibCodec codec, CompressionLevel level, int bits)
         {
             return Initialize(codec, level, bits, MEM_LEVEL_DEFAULT, CompressionStrategy.Default);
         }
 
-        internal int Initialize(ZlibCodec codec, CompressionLevel level, int bits, CompressionStrategy compressionStrategy)
+        internal ZlibCode Initialize(
+            ZlibCodec codec, CompressionLevel level, int bits, CompressionStrategy compressionStrategy)
         {
             return Initialize(codec, level, bits, MEM_LEVEL_DEFAULT, compressionStrategy);
         }
 
-        internal int Initialize(ZlibCodec codec, CompressionLevel level, int windowBits, int memLevel, CompressionStrategy strategy)
+        internal ZlibCode Initialize(
+            ZlibCodec codec, CompressionLevel level, int windowBits, int memLevel, CompressionStrategy strategy)
         {
             _codec = codec;
             _codec.Message = null;
@@ -1612,7 +1672,7 @@ namespace Ionic.Zlib
             compressionStrategy = strategy;
 
             Reset();
-            return ZlibConstants.Z_OK;
+            return ZlibCode.Z_OK;
         }
 
 
@@ -1637,11 +1697,11 @@ namespace Ionic.Zlib
         }
 
 
-        internal int End()
+        internal ZlibCode End()
         {
             if (status != INIT_STATE && status != BUSY_STATE && status != FINISH_STATE)
             {
-                return ZlibConstants.Z_STREAM_ERROR;
+                return ZlibCode.Z_STREAM_ERROR;
             }
             // Deallocate in reverse order of allocations:
             pending = null;
@@ -1650,7 +1710,7 @@ namespace Ionic.Zlib
             window = null;
             // free
             // dstate=null;
-            return status == BUSY_STATE ? ZlibConstants.Z_DATA_ERROR : ZlibConstants.Z_OK;
+            return status == BUSY_STATE ? ZlibCode.Z_DATA_ERROR : ZlibCode.Z_OK;
         }
 
 
@@ -1661,9 +1721,11 @@ namespace Ionic.Zlib
                 case DeflateFlavor.Store:
                     DeflateFunction = DeflateNone;
                     break;
+
                 case DeflateFlavor.Fast:
                     DeflateFunction = DeflateFast;
                     break;
+
                 case DeflateFlavor.Slow:
                     DeflateFunction = DeflateSlow;
                     break;
@@ -1671,9 +1733,14 @@ namespace Ionic.Zlib
         }
 
 
-        internal int SetParams(CompressionLevel level, CompressionStrategy strategy)
+        internal ZlibCode SetParams(
+            CompressionLevel level, CompressionStrategy strategy,
+            ReadOnlySpan<byte> input, Span<byte> output,
+            out int consumed, out int written)
         {
-            int result = ZlibConstants.Z_OK;
+            var result = ZlibCode.Z_OK;
+            consumed = 0;
+            written = 0;
 
             if (compressionLevel != level)
             {
@@ -1683,7 +1750,8 @@ namespace Ionic.Zlib
                 if (newConfig.Flavor != config.Flavor && _codec.TotalBytesIn != 0)
                 {
                     // Flush the last buffer:
-                    result = _codec.Deflate(FlushType.Partial);
+                    result = _codec.Deflate(
+                        FlushType.Partial, input, output, out consumed, out written);
                 }
 
                 compressionLevel = level;
@@ -1698,7 +1766,7 @@ namespace Ionic.Zlib
         }
 
 
-        internal int SetDictionary(ReadOnlySpan<byte> dictionary)
+        internal ZlibCode SetDictionary(ReadOnlySpan<byte> dictionary)
         {
             int length = dictionary.Length;
             int index = 0;
@@ -1709,7 +1777,8 @@ namespace Ionic.Zlib
             _codec._Adler32 = Adler.Adler32(_codec._Adler32, dictionary);
 
             if (length < MIN_MATCH)
-                return ZlibConstants.Z_OK;
+                return ZlibCode.Z_OK;
+
             if (length > w_size - MIN_LOOKAHEAD)
             {
                 length = w_size - MIN_LOOKAHEAD;
@@ -1732,29 +1801,27 @@ namespace Ionic.Zlib
                 prev[n & w_mask] = head[ins_h];
                 head[ins_h] = (short)n;
             }
-            return ZlibConstants.Z_OK;
+            return ZlibCode.Z_OK;
         }
 
 
 
-        internal int Deflate(FlushType flush)
+        internal ZlibCode Deflate(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
+            out int consumed, out int written)
         {
-            int old_flush;
-
-            if (_codec.OutputBuffer == null ||
-                (_codec.InputBuffer == null && _codec.AvailableBytesIn != 0) ||
-                (status == FINISH_STATE && flush != FlushType.Finish))
+            if (status == FINISH_STATE && flush != FlushType.Finish)
             {
-                _codec.Message = _ErrorMessage[ZlibConstants.Z_NEED_DICT - ZlibConstants.Z_STREAM_ERROR];
+                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_STREAM_ERROR];
                 throw new ZlibException(string.Format("Something is fishy. [{0}]", _codec.Message));
             }
-            if (_codec.AvailableBytesOut == 0)
+            if (output.Length == 0)
             {
-                _codec.Message = _ErrorMessage[ZlibConstants.Z_NEED_DICT - ZlibConstants.Z_BUF_ERROR];
-                throw new ZlibException("OutputBuffer is full (AvailableBytesOut == 0)");
+                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_BUF_ERROR];
+                throw new ZlibException("No room in output.");
             }
 
-            old_flush = last_flush;
+            int old_flush = last_flush;
             last_flush = (int)flush;
 
             // Write the zlib (rfc1950) header bytes
@@ -1788,11 +1855,18 @@ namespace Ionic.Zlib
                 _codec._Adler32 = Adler.Adler32(0, default);
             }
 
+            int fwritten;
+            consumed = 0;
+            written = 0;
+
             // Flush as much pending output as possible
             if (pendingCount != 0)
             {
-                _codec.FlushPending();
-                if (_codec.AvailableBytesOut == 0)
+                _codec.FlushPending(output, out fwritten);
+                output = output.Slice(fwritten);
+                written += fwritten;
+
+                if (output.Length == 0)
                 {
                     //System.out.println("  avail_out==0");
                     // Since avail_out is 0, deflate will be called again with
@@ -1801,14 +1875,14 @@ namespace Ionic.Zlib
                     // but this is not an error situation so make sure we
                     // return OK instead of BUF_ERROR at next call of deflate:
                     last_flush = -1;
-                    return ZlibConstants.Z_OK;
+                    return ZlibCode.Z_OK;
                 }
 
                 // Make sure there is something to do and avoid duplicate consecutive
                 // flushes. For repeated and useless calls with Z_FINISH, we keep
                 // returning Z_STREAM_END instead of Z_BUFF_ERROR.
             }
-            else if (_codec.AvailableBytesIn == 0 &&
+            else if (input.Length == 0 &&
                      (int)flush <= old_flush &&
                      flush != FlushType.Finish)
             {
@@ -1820,34 +1894,41 @@ namespace Ionic.Zlib
                 // can just say "OK" and do nothing.
 
                 // _codec.Message = z_errmsg[ZlibConstants.Z_NEED_DICT - (ZlibConstants.Z_BUF_ERROR)];
-                // throw new ZlibException("AvailableBytesIn == 0 && flush<=old_flush && flush != FlushType.Finish");
+                // throw new ZlibException("input.Length == 0 && flush<=old_flush && flush != FlushType.Finish");
 
-                return ZlibConstants.Z_OK;
+                return ZlibCode.Z_OK;
             }
 
             // User must not provide more input after the first FINISH:
-            if (status == FINISH_STATE && _codec.AvailableBytesIn != 0)
+            if (status == FINISH_STATE && input.Length != 0)
             {
-                _codec.Message = _ErrorMessage[ZlibConstants.Z_NEED_DICT - ZlibConstants.Z_BUF_ERROR];
-                throw new ZlibException("status == FINISH_STATE && _codec.AvailableBytesIn != 0");
+                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_BUF_ERROR];
+                throw new ZlibException("status == FINISH_STATE && input.Length != 0");
             }
 
             // Start a new block or continue the current one.
-            if (_codec.AvailableBytesIn != 0 || lookahead != 0 || (flush != FlushType.None && status != FINISH_STATE))
+            if (input.Length != 0 || lookahead != 0 || (flush != FlushType.None && status != FINISH_STATE))
             {
-                BlockState bstate = DeflateFunction(flush);
+                BlockState bstate = DeflateFunction(
+                    flush, input, output, out int dconsumed, out int dwritten);
+
+                input = input.Slice(dconsumed);
+                output = output.Slice(dwritten);
+                consumed += dconsumed;
+                written += dwritten;
 
                 if (bstate == BlockState.FinishStarted || bstate == BlockState.FinishDone)
                 {
                     status = FINISH_STATE;
                 }
+
                 if (bstate == BlockState.NeedMore || bstate == BlockState.FinishStarted)
                 {
-                    if (_codec.AvailableBytesOut == 0)
+                    if (output.Length == 0)
                     {
                         last_flush = -1; // avoid BUF_ERROR next call, see above
                     }
-                    return ZlibConstants.Z_OK;
+                    return ZlibCode.Z_OK;
                     // If flush != Z_NO_FLUSH && avail_out == 0, the next call
                     // of deflate should use the same flush parameter to make sure
                     // that the flush is complete. So we don't have to output an
@@ -1875,20 +1956,24 @@ namespace Ionic.Zlib
                                 head[i] = 0;
                         }
                     }
-                    _codec.FlushPending();
-                    if (_codec.AvailableBytesOut == 0)
+
+                    _codec.FlushPending(output, out fwritten);
+                    output = output.Slice(fwritten);
+                    written += fwritten;
+
+                    if (output.Length == 0)
                     {
                         last_flush = -1; // avoid BUF_ERROR at next call, see above
-                        return ZlibConstants.Z_OK;
+                        return ZlibCode.Z_OK;
                     }
                 }
             }
 
             if (flush != FlushType.Finish)
-                return ZlibConstants.Z_OK;
+                return ZlibCode.Z_OK;
 
             if (!WantRfc1950HeaderBytes || Rfc1950BytesEmitted)
-                return ZlibConstants.Z_STREAM_END;
+                return ZlibCode.Z_STREAM_END;
 
             // Write the zlib trailer (adler32)
             pending[pendingCount++] = (byte)((_codec._Adler32 & 0xFF000000) >> 24);
@@ -1898,14 +1983,15 @@ namespace Ionic.Zlib
             //putShortMSB((int)(SharedUtils.URShift(_codec._Adler32, 16)));
             //putShortMSB((int)(_codec._Adler32 & 0xffff));
 
-            _codec.FlushPending();
+            _codec.FlushPending(output, out fwritten);
+            written += fwritten;
 
             // If avail_out is zero, the application will call deflate again
             // to flush the rest.
 
             Rfc1950BytesEmitted = true; // write the trailer only once!
 
-            return pendingCount != 0 ? ZlibConstants.Z_OK : ZlibConstants.Z_STREAM_END;
+            return pendingCount != 0 ? ZlibCode.Z_OK : ZlibCode.Z_STREAM_END;
         }
 
     }

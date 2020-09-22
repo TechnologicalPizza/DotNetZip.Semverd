@@ -59,25 +59,13 @@
 //
 // -----------------------------------------------------------------------
 
-
-
 using System;
+
 namespace Ionic.Zlib
 {
     internal sealed class InfTree
     {
-
         private const int MANY = 1440;
-
-        private const int Z_OK = 0;
-        private const int Z_STREAM_END = 1;
-        private const int Z_NEED_DICT = 2;
-        private const int Z_ERRNO = -1;
-        private const int Z_STREAM_ERROR = -2;
-        private const int Z_DATA_ERROR = -3;
-        private const int Z_MEM_ERROR = -4;
-        private const int Z_BUF_ERROR = -5;
-        private const int Z_VERSION_ERROR = -6;
 
         internal const int fixed_bl = 9;
         internal const int fixed_bd = 5;
@@ -113,13 +101,14 @@ namespace Ionic.Zlib
         internal int[] u; // table stack
         internal int[] x; // bit offsets, then code stack
 
-        private int huft_build(int[] b, int bindex, int n, int s, int[] d, int[] e, ref int t, ref int m, int[] hp, int[] hn, int[] v)
+        private ZlibCode HuftBuild(
+            int[] b, int bindex, int n, int s, int[] d, int[] e, ref int t, ref int m, int[] hp, int[] hn, int[] v)
         {
             // Given a list of code lengths and a maximum table size, make a set of
-            // tables to decode that set of codes.  Return Z_OK on success, Z_BUF_ERROR
+            // tables to decode that set of codes.  Return ZlibCode.Z_OK on success, ZlibCode.Z_BUF_ERROR
             // if the given code set is incomplete (the tables are still built in this
-            // case), Z_DATA_ERROR if the input is invalid (an over-subscribed set of
-            // lengths), or Z_MEM_ERROR if not enough memory.
+            // case), ZlibCode.Z_DATA_ERROR if the input is invalid (an over-subscribed set of
+            // lengths), or ZlibCode.Z_MEM_ERROR if not enough memory.
 
             int a; // counter for codes of length k
             int f; // i repeats in table every f entries
@@ -154,7 +143,7 @@ namespace Ionic.Zlib
                 // null input--all zero length codes
                 t = -1;
                 m = 0;
-                return Z_OK;
+                return ZlibCode.Z_OK;
             }
 
             // Find minimum and maximum length, bound *m by those
@@ -184,12 +173,12 @@ namespace Ionic.Zlib
             {
                 if ((y -= c[j]) < 0)
                 {
-                    return Z_DATA_ERROR;
+                    return ZlibCode.Z_DATA_ERROR;
                 }
             }
             if ((y -= c[i]) < 0)
             {
-                return Z_DATA_ERROR;
+                return ZlibCode.Z_DATA_ERROR;
             }
             c[i] += y;
 
@@ -266,7 +255,7 @@ namespace Ionic.Zlib
                         if (hn[0] + z > MANY)
                         {
                             // (note: doesn't matter for fixed)
-                            return Z_DATA_ERROR; // overflow of MANY
+                            return ZlibCode.Z_DATA_ERROR; // overflow of MANY
                         }
                         u[h] = q = hn[0]; // DEBUG
                         hn[0] += z;
@@ -328,87 +317,86 @@ namespace Ionic.Zlib
                     }
                 }
             }
-            // Return Z_BUF_ERROR if we were given an incomplete table
-            return y != 0 && g != 1 ? Z_BUF_ERROR : Z_OK;
+            // Return ZlibCode.Z_BUF_ERROR if we were given an incomplete table
+            return y != 0 && g != 1 ? ZlibCode.Z_BUF_ERROR : ZlibCode.Z_OK;
         }
 
-        internal int inflate_trees_bits(int[] c, ref int bb, ref int tb, int[] hp, ZlibCodec z)
+        internal ZlibCode InflateTreesBits(int[] c, ref int bb, ref int tb, int[] hp, ZlibCodec z)
         {
-            int result;
-            initWorkArea(19);
+            InitWorkArea(19);
             hn[0] = 0;
-            result = huft_build(c, 0, 19, 19, null, null, ref tb, ref bb, hp, hn, v);
+            var result = HuftBuild(c, 0, 19, 19, null, null, ref tb, ref bb, hp, hn, v);
 
-            if (result == Z_DATA_ERROR)
+            if (result == ZlibCode.Z_DATA_ERROR)
             {
                 z.Message = "oversubscribed dynamic bit lengths tree";
             }
-            else if (result == Z_BUF_ERROR || bb == 0)
+            else if (result == ZlibCode.Z_BUF_ERROR || bb == 0)
             {
                 z.Message = "incomplete dynamic bit lengths tree";
-                result = Z_DATA_ERROR;
+                result = ZlibCode.Z_DATA_ERROR;
             }
             return result;
         }
 
-        internal int inflate_trees_dynamic(int nl, int nd, int[] c, ref int bl, ref int bd, ref int tl, ref int td, int[] hp, ZlibCodec z)
+        internal ZlibCode InflateTreesDynamic(
+            int nl, int nd, int[] c, ref int bl, ref int bd, ref int tl, ref int td, int[] hp, ZlibCodec z)
         {
-            int result;
-
             // build literal/length tree
-            initWorkArea(288);
+            InitWorkArea(288);
             hn[0] = 0;
-            result = huft_build(c, 0, nl, 257, cplens, cplext, ref tl, ref bl, hp, hn, v);
-            if (result != Z_OK || bl == 0)
+            var result = HuftBuild(c, 0, nl, 257, cplens, cplext, ref tl, ref bl, hp, hn, v);
+            if (result != ZlibCode.Z_OK || bl == 0)
             {
-                if (result == Z_DATA_ERROR)
+                if (result == ZlibCode.Z_DATA_ERROR)
                 {
                     z.Message = "oversubscribed literal/length tree";
                 }
-                else if (result != Z_MEM_ERROR)
+                else if (result != ZlibCode.Z_MEM_ERROR)
                 {
                     z.Message = "incomplete literal/length tree";
-                    result = Z_DATA_ERROR;
+                    result = ZlibCode.Z_DATA_ERROR;
                 }
                 return result;
             }
 
             // build distance tree
-            initWorkArea(288);
-            result = huft_build(c, nl, nd, 0, cpdist, cpdext, ref td, ref bd, hp, hn, v);
+            InitWorkArea(288);
+            result = HuftBuild(c, nl, nd, 0, cpdist, cpdext, ref td, ref bd, hp, hn, v);
 
-            if (result != Z_OK || (bd == 0 && nl > 257))
+            if (result != ZlibCode.Z_OK || (bd == 0 && nl > 257))
             {
-                if (result == Z_DATA_ERROR)
+                if (result == ZlibCode.Z_DATA_ERROR)
                 {
                     z.Message = "oversubscribed distance tree";
                 }
-                else if (result == Z_BUF_ERROR)
+                else if (result == ZlibCode.Z_BUF_ERROR)
                 {
                     z.Message = "incomplete distance tree";
-                    result = Z_DATA_ERROR;
+                    result = ZlibCode.Z_DATA_ERROR;
                 }
-                else if (result != Z_MEM_ERROR)
+                else if (result != ZlibCode.Z_MEM_ERROR)
                 {
                     z.Message = "empty distance tree with lengths";
-                    result = Z_DATA_ERROR;
+                    result = ZlibCode.Z_DATA_ERROR;
                 }
                 return result;
             }
 
-            return Z_OK;
+            return ZlibCode.Z_OK;
         }
 
-        internal static int inflate_trees_fixed(ref int bl, ref int bd, out int[] tl, out int[] td, ZlibCodec z)
+        internal static ZlibCode InflateTreesFixed(
+            ref int bl, ref int bd, out int[] tl, out int[] td, ZlibCodec z)
         {
             bl = fixed_bl;
             bd = fixed_bd;
             tl = fixed_tl;
             td = fixed_td;
-            return Z_OK;
+            return ZlibCode.Z_OK;
         }
 
-        private void initWorkArea(int vsize)
+        private void InitWorkArea(int vsize)
         {
             if (hn == null)
             {

@@ -17,7 +17,7 @@ namespace Ionic.Zlib.Tests
 
         public UnitTest1()
         {
-            this.rnd = new Random();
+            this.rnd = new Random(1234);
             TestStrings = new Dictionary<string, string>()
                 {
                     { "LetMeDoItNow", LetMeDoItNow },
@@ -37,7 +37,7 @@ namespace Ionic.Zlib.Tests
         /// Gets or sets the test context which provides
         /// information about and functionality for the current test run.
         /// </summary>
-        public TestContext TestContext  { get; set; }
+        public TestContext TestContext { get; set; }
 
         #region Additional test attributes
         //
@@ -270,64 +270,89 @@ namespace Ionic.Zlib.Tests
         {
             string TextToCompress = LoremIpsum;
 
-            int rc;
             int bufferSize = 40000;
             byte[] compressedBytes = new byte[bufferSize];
             byte[] decompressedBytes = new byte[bufferSize];
 
-            ZlibCodec compressingStream = new ZlibCodec();
+            ZlibCodec compressor = new ZlibCodec();
 
-            rc = compressingStream.InitializeDeflate(CompressionLevel.Default);
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressingStream.Message));
+            var rc = compressor.InitializeDeflate(CompressionLevel.Default);
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressor.Message));
 
-            compressingStream.InputBuffer = System.Text.ASCIIEncoding.ASCII.GetBytes(TextToCompress);
-            compressingStream.NextIn = 0;
+            compressor.InputBuffer = System.Text.ASCIIEncoding.ASCII.GetBytes(TextToCompress);
+            compressor.NextIn = 0;
 
-            compressingStream.OutputBuffer = compressedBytes;
-            compressingStream.NextOut = 0;
+            compressor.OutputBuffer = compressedBytes;
+            compressor.NextOut = 0;
 
-            while (compressingStream.TotalBytesIn != TextToCompress.Length && compressingStream.TotalBytesOut < bufferSize)
+            int consumed = 0;
+            int written = 0;
+
+            while (compressor.TotalBytesIn != TextToCompress.Length && compressor.TotalBytesOut < bufferSize)
             {
-                compressingStream.AvailableBytesIn = compressingStream.AvailableBytesOut = 1; // force small buffers
-                rc = compressingStream.Deflate(FlushType.None);
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Deflate(1) [{0}]", compressingStream.Message));
+                compressor.AvailableBytesIn = compressor.AvailableBytesOut = 1; // force small buffers
+
+                rc = compressor.Deflate(
+                    FlushType.None,
+                    compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                    compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                    out consumed, out written);
+
+                compressor.NextIn += consumed;
+                compressor.NextOut += written;
+                compressor.AvailableBytesIn -= consumed;
+                compressor.AvailableBytesOut -= written;
+
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Deflate(1) [{0}]", compressor.Message));
             }
 
             while (true)
             {
-                compressingStream.AvailableBytesOut = 1;
-                rc = compressingStream.Deflate(FlushType.Finish);
-                if (rc == ZlibConstants.Z_STREAM_END)
+                compressor.AvailableBytesOut = 1;
+
+                rc = compressor.Deflate(
+                    FlushType.Finish,
+                    compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                    compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                    out consumed, out written);
+
+                compressor.NextIn += consumed;
+                compressor.NextOut += written;
+                compressor.AvailableBytesIn -= consumed;
+                compressor.AvailableBytesOut -= written;
+
+
+                if (rc == ZlibCode.Z_STREAM_END)
                     break;
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Deflate(2) [{0}]", compressingStream.Message));
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Deflate(2) [{0}]", compressor.Message));
             }
 
-            rc = compressingStream.EndDeflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressingStream.Message));
+            rc = compressor.EndDeflate();
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressor.Message));
 
-            ZlibCodec decompressingStream = new ZlibCodec();
+            ZlibCodec decompressor = new ZlibCodec();
 
-            decompressingStream.InputBuffer = compressedBytes;
-            decompressingStream.NextIn = 0;
-            decompressingStream.OutputBuffer = decompressedBytes;
-            decompressingStream.NextOut = 0;
+            decompressor.InputBuffer = compressedBytes;
+            decompressor.NextIn = 0;
+            decompressor.OutputBuffer = decompressedBytes;
+            decompressor.NextOut = 0;
 
-            rc = decompressingStream.InitializeInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at InitializeInflate() [{0}]", decompressingStream.Message));
+            rc = decompressor.InitializeInflate();
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at InitializeInflate() [{0}]", decompressor.Message));
             //CheckForError(decompressingStream, rc, "inflateInit");
 
-            while (decompressingStream.TotalBytesOut < decompressedBytes.Length && decompressingStream.TotalBytesIn < bufferSize)
+            while (decompressor.TotalBytesOut < decompressedBytes.Length && decompressor.TotalBytesIn < bufferSize)
             {
-                decompressingStream.AvailableBytesIn = decompressingStream.AvailableBytesOut = 1; /* force small buffers */
-                rc = decompressingStream.Inflate(FlushType.None);
-                if (rc == ZlibConstants.Z_STREAM_END)
+                decompressor.AvailableBytesIn = decompressor.AvailableBytesOut = 1; /* force small buffers */
+                rc = decompressor.Inflate(FlushType.None);
+                if (rc == ZlibCode.Z_STREAM_END)
                     break;
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Inflate() [{0}]", decompressingStream.Message));
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Inflate() [{0}]", decompressor.Message));
                 //CheckForError(decompressingStream, rc, "inflate");
             }
 
-            rc = decompressingStream.EndInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressingStream.Message));
+            rc = decompressor.EndInflate();
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
             //CheckForError(decompressingStream, rc, "inflateEnd");
 
             int j = 0;
@@ -347,8 +372,8 @@ namespace Ionic.Zlib.Tests
             var result = System.Text.ASCIIEncoding.ASCII.GetString(decompressedBytes, 0, j);
 
             TestContext.WriteLine("orig length: {0}", TextToCompress.Length);
-            TestContext.WriteLine("compressed length: {0}", compressingStream.TotalBytesOut);
-            TestContext.WriteLine("decompressed length: {0}", decompressingStream.TotalBytesOut);
+            TestContext.WriteLine("compressed length: {0}", compressor.TotalBytesOut);
+            TestContext.WriteLine("decompressed length: {0}", decompressor.TotalBytesOut);
             TestContext.WriteLine("result length: {0}", result.Length);
             TestContext.WriteLine("result of inflate:\n{0}", result);
             return;
@@ -416,7 +441,6 @@ namespace Ionic.Zlib.Tests
         [TestMethod]
         public void Zlib_BasicDictionaryDeflateInflate()
         {
-            int rc;
             int comprLen = 40000;
             int uncomprLen = comprLen;
             byte[] uncompr = new byte[uncomprLen];
@@ -424,8 +448,8 @@ namespace Ionic.Zlib.Tests
             //long dictId;
 
             ZlibCodec compressor = new ZlibCodec();
-            rc = compressor.InitializeDeflate(CompressionLevel.BestCompression);
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressor.Message));
+            var rc = compressor.InitializeDeflate(CompressionLevel.BestCompression);
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressor.Message));
 
             string dictionaryWord = "hello ";
             byte[] dictionary = System.Text.ASCIIEncoding.ASCII.GetBytes(dictionaryWord);
@@ -433,7 +457,7 @@ namespace Ionic.Zlib.Tests
             byte[] BytesToCompress = System.Text.ASCIIEncoding.ASCII.GetBytes(TextToCompress);
 
             rc = compressor.SetDictionary(dictionary);
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at SetDeflateDictionary() [{0}]", compressor.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at SetDeflateDictionary() [{0}]", compressor.Message));
 
             int dictId = compressor.Adler32;
 
@@ -445,11 +469,21 @@ namespace Ionic.Zlib.Tests
             compressor.NextIn = 0;
             compressor.AvailableBytesIn = BytesToCompress.Length;
 
-            rc = compressor.Deflate(FlushType.Finish);
-            Assert.AreEqual(ZlibConstants.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressor.Message));
+            rc = compressor.Deflate(
+                FlushType.Finish,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out int consumed, out int written);
+
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
+
+            Assert.AreEqual(ZlibCode.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressor.Message));
 
             rc = compressor.EndDeflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressor.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressor.Message));
 
 
             ZlibCodec decompressor = new ZlibCodec();
@@ -459,7 +493,7 @@ namespace Ionic.Zlib.Tests
             decompressor.AvailableBytesIn = comprLen;
 
             rc = decompressor.InitializeInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at InitializeInflate() [{0}]", decompressor.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at InitializeInflate() [{0}]", decompressor.Message));
 
             decompressor.OutputBuffer = uncompr;
             decompressor.NextOut = 0;
@@ -468,20 +502,20 @@ namespace Ionic.Zlib.Tests
             while (true)
             {
                 rc = decompressor.Inflate(FlushType.None);
-                if (rc == ZlibConstants.Z_STREAM_END)
+                if (rc == ZlibCode.Z_STREAM_END)
                 {
                     break;
                 }
-                if (rc == ZlibConstants.Z_NEED_DICT)
+                if (rc == ZlibCode.Z_NEED_DICT)
                 {
                     Assert.AreEqual<long>(dictId, decompressor.Adler32, "Unexpected Dictionary");
                     rc = decompressor.SetDictionary(dictionary);
                 }
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Inflate/SetInflateDictionary() [{0}]", decompressor.Message));
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Inflate/SetInflateDictionary() [{0}]", decompressor.Message));
             }
 
             rc = decompressor.EndInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
 
             int j = 0;
             for (; j < uncompr.Length; j++)
@@ -509,7 +543,6 @@ namespace Ionic.Zlib.Tests
         [TestMethod]
         public void Zlib_TestFlushSync()
         {
-            int rc;
             int bufferSize = 40000;
             byte[] CompressedBytes = new byte[bufferSize];
             byte[] DecompressedBytes = new byte[bufferSize];
@@ -526,13 +559,32 @@ namespace Ionic.Zlib.Tests
             compressor.NextOut = 0;
             compressor.AvailableBytesOut = CompressedBytes.Length;
 
-            rc = compressor.Deflate(FlushType.Full);
+            var rc = compressor.Deflate(
+                FlushType.Full,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out int consumed, out int written);
+
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
 
             CompressedBytes[3]++; // force an error in first compressed block // dinoch - ??
             compressor.AvailableBytesIn = TextToCompress.Length - 3;
 
-            rc = compressor.Deflate(FlushType.Finish);
-            Assert.AreEqual(ZlibConstants.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressor.Message));
+            rc = compressor.Deflate(
+                FlushType.Finish,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out consumed, out written);
+
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
+
+            Assert.AreEqual(ZlibCode.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressor.Message));
 
             rc = compressor.EndDeflate();
             bufferSize = (int)(compressor.TotalBytesOut);
@@ -566,7 +618,7 @@ namespace Ionic.Zlib.Tests
             Assert.IsTrue(gotException, "inflate should report DATA_ERROR");
 
             rc = decompressor.EndInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
 
             int j = 0;
             for (; j < DecompressedBytes.Length; j++)
@@ -587,21 +639,23 @@ namespace Ionic.Zlib.Tests
         [TestMethod]
         public void Zlib_Codec_TestLargeDeflateInflate()
         {
-            int rc;
             int j;
             int bufferSize = 80000;
             byte[] compressedBytes = new byte[bufferSize];
             byte[] workBuffer = new byte[bufferSize / 4];
 
-            ZlibCodec compressingStream = new ZlibCodec();
+            ZlibCodec compressor = new ZlibCodec();
 
-            rc = compressingStream.InitializeDeflate(CompressionLevel.Level1);
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressingStream.Message));
+            var rc = compressor.InitializeDeflate(CompressionLevel.Level1);
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at InitializeDeflate() [{0}]", compressor.Message));
 
-            compressingStream.OutputBuffer = compressedBytes;
-            compressingStream.AvailableBytesOut = compressedBytes.Length;
-            compressingStream.NextOut = 0;
+            compressor.OutputBuffer = compressedBytes;
+            compressor.AvailableBytesOut = compressedBytes.Length;
+            compressor.NextOut = 0;
             Random rnd = new Random();
+
+            int consumed;
+            int written;
 
             for (int k = 0; k < 4; k++)
             {
@@ -613,7 +667,16 @@ namespace Ionic.Zlib.Tests
 
                     case 1:
                         // switch to no compression, keep same workBuffer (all zeroes):
-                        compressingStream.SetDeflateParams(CompressionLevel.None, CompressionStrategy.Default);
+                        compressor.SetDeflateParams(
+                            CompressionLevel.None, CompressionStrategy.Default,
+                            compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                            compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                            out consumed, out written);
+
+                        compressor.NextIn += consumed;
+                        compressor.NextOut += written;
+                        compressor.AvailableBytesIn -= consumed;
+                        compressor.AvailableBytesOut -= written;
                         break;
 
                     case 2:
@@ -627,7 +690,17 @@ namespace Ionic.Zlib.Tests
                                 workBuffer[j + i] = b;
                             i += j - 1;
                         }
-                        compressingStream.SetDeflateParams(CompressionLevel.BestCompression, CompressionStrategy.Filtered);
+
+                        compressor.SetDeflateParams(
+                            CompressionLevel.BestCompression, CompressionStrategy.Filtered,
+                            compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                            compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                            out consumed, out written);
+
+                        compressor.NextIn += consumed;
+                        compressor.NextOut += written;
+                        compressor.AvailableBytesIn -= consumed;
+                        compressor.AvailableBytesOut -= written;
                         break;
 
                     case 3:
@@ -636,27 +709,47 @@ namespace Ionic.Zlib.Tests
                         break;
                 }
 
-                compressingStream.InputBuffer = workBuffer;
-                compressingStream.NextIn = 0;
-                compressingStream.AvailableBytesIn = workBuffer.Length;
-                rc = compressingStream.Deflate(FlushType.None);
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Deflate({0}) [{1}]", k, compressingStream.Message));
+                compressor.InputBuffer = workBuffer;
+                compressor.NextIn = 0;
+                compressor.AvailableBytesIn = workBuffer.Length;
+
+                rc = compressor.Deflate(
+                    FlushType.None,
+                    compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                    compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                    out consumed, out written);
+
+                compressor.NextIn += consumed;
+                compressor.NextOut += written;
+                compressor.AvailableBytesIn -= consumed;
+                compressor.AvailableBytesOut -= written;
+
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Deflate({0}) [{1}]", k, compressor.Message));
 
                 if (k == 0)
-                    Assert.AreEqual(0, compressingStream.AvailableBytesIn, "Deflate should be greedy.");
+                    Assert.AreEqual(0, compressor.AvailableBytesIn, "Deflate should be greedy.");
 
                 TestContext.WriteLine("Stage {0}: uncompressed/compresssed bytes so far:  ({1,6}/{2,6})",
-                      k, compressingStream.TotalBytesIn, compressingStream.TotalBytesOut);
+                      k, compressor.TotalBytesIn, compressor.TotalBytesOut);
             }
 
-            rc = compressingStream.Deflate(FlushType.Finish);
-            Assert.AreEqual(ZlibConstants.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressingStream.Message));
+            rc = compressor.Deflate(
+                FlushType.Finish,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out consumed, out written);
 
-            rc = compressingStream.EndDeflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressingStream.Message));
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
+            Assert.AreEqual(ZlibCode.Z_STREAM_END, rc, string.Format("at Deflate() [{0}]", compressor.Message));
+
+            rc = compressor.EndDeflate();
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndDeflate() [{0}]", compressor.Message));
 
             TestContext.WriteLine("Final: uncompressed/compressed bytes: ({0,6},{1,6})",
-                  compressingStream.TotalBytesIn, compressingStream.TotalBytesOut);
+                  compressor.TotalBytesIn, compressor.TotalBytesOut);
 
             ZlibCodec decompressingStream = new ZlibCodec(CompressionMode.Decompress);
 
@@ -675,19 +768,19 @@ namespace Ionic.Zlib.Tests
 
                 nCycles++;
 
-                if (rc == ZlibConstants.Z_STREAM_END)
+                if (rc == ZlibCode.Z_STREAM_END)
                     break;
 
-                Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at Inflate() [{0}] TotalBytesOut={1}",
+                Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at Inflate() [{0}] TotalBytesOut={1}",
                                        decompressingStream.Message, decompressingStream.TotalBytesOut));
             }
 
             rc = decompressingStream.EndInflate();
-            Assert.AreEqual(ZlibConstants.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressingStream.Message));
+            Assert.AreEqual(ZlibCode.Z_OK, rc, string.Format("at EndInflate() [{0}]", decompressingStream.Message));
 
             Assert.AreEqual(4 * workBuffer.Length, (int)decompressingStream.TotalBytesOut);
 
-            TestContext.WriteLine("compressed length: {0}", compressingStream.TotalBytesOut);
+            TestContext.WriteLine("compressed length: {0}", compressor.TotalBytesOut);
             TestContext.WriteLine("decompressed length (expected): {0}", 4 * workBuffer.Length);
             TestContext.WriteLine("decompressed length (actual)  : {0}", decompressingStream.TotalBytesOut);
             TestContext.WriteLine("decompression cycles: {0}", nCycles);
@@ -837,7 +930,7 @@ namespace Ionic.Zlib.Tests
             TestContext.WriteLine("Size of Buffer to Inflate: {0} bytes.", b.Length);
             MemoryStream ms = new MemoryStream(DecompressedBytes);
 
-            int rc = decompressor.InitializeInflate();
+            var rc = decompressor.InitializeInflate();
 
             decompressor.InputBuffer = b;
             decompressor.NextIn = 0;
@@ -856,7 +949,7 @@ namespace Ionic.Zlib.Tests
                     decompressor.AvailableBytesOut = buffer.Length;
                     rc = decompressor.Inflate(flush);
 
-                    if (rc != ZlibConstants.Z_OK && rc != ZlibConstants.Z_STREAM_END)
+                    if (rc != ZlibCode.Z_OK && rc != ZlibCode.Z_STREAM_END)
                         throw new Exception("inflating: " + decompressor.Message);
 
                     if (buffer.Length - decompressor.AvailableBytesOut > 0)
@@ -900,7 +993,7 @@ namespace Ionic.Zlib.Tests
             TestContext.WriteLine("Size of Buffer to Deflate: {0} bytes.", b.Length);
             MemoryStream ms = new MemoryStream();
 
-            int rc = compressor.InitializeDeflate(level);
+            var rc = compressor.InitializeDeflate(level);
 
             compressor.InputBuffer = b;
             compressor.NextIn = 0;
@@ -917,9 +1010,19 @@ namespace Ionic.Zlib.Tests
                 {
                     compressor.NextOut = 0;
                     compressor.AvailableBytesOut = buffer.Length;
-                    rc = compressor.Deflate(flush);
 
-                    if (rc != ZlibConstants.Z_OK && rc != ZlibConstants.Z_STREAM_END)
+                    rc = compressor.Deflate(
+                        flush,
+                        compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                        compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                        out int consumed, out int written);
+
+                    compressor.NextIn += consumed;
+                    compressor.NextOut += written;
+                    compressor.AvailableBytesIn -= consumed;
+                    compressor.AvailableBytesOut -= written;
+
+                    if (rc != ZlibCode.Z_OK && rc != ZlibCode.Z_STREAM_END)
                         throw new Exception("deflating: " + compressor.Message);
 
                     if (buffer.Length - compressor.AvailableBytesOut > 0)
@@ -1465,13 +1568,12 @@ namespace Ionic.Zlib.Tests
 
 
 
-
         [TestMethod]
         public void Zlib_Streams_VariousSizes()
         {
             byte[] working = new byte[WORKING_BUFFER_SIZE];
             int n = -1;
-            int[] Sizes = { 8000, 88000, 188000, 388000, 580000, 1580000 };
+            int[] Sizes = { 8000, 88000, 188000, 388000, /*580000, 1580000*/ };
 
             for (int p = 0; p < Sizes.Length; p++)
             {

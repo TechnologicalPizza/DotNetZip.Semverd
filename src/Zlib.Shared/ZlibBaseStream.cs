@@ -161,10 +161,24 @@ namespace Ionic.Zlib
                 _z.OutputBuffer = WorkingBuffer;
                 _z.NextOut = 0;
                 _z.AvailableBytesOut = _workingBuffer.Length;
-                int rc = WantCompress
-                    ? _z.Deflate(_flushMode)
+
+                int consumed = 0;
+                int written = 0;
+
+                ZlibCode rc = WantCompress
+                    ? _z.Deflate(
+                        _flushMode,
+                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
+                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                        out consumed, out written)
                     : _z.Inflate(_flushMode);
-                if (rc != ZlibConstants.Z_OK && rc != ZlibConstants.Z_STREAM_END)
+
+                _z.NextIn += consumed;
+                _z.NextOut += written;
+                _z.AvailableBytesIn -= consumed;
+                _z.AvailableBytesOut -= written;
+
+                if (rc != ZlibCode.Z_OK && rc != ZlibCode.Z_STREAM_END)
                     throw new ZlibException((WantCompress ? "de" : "in") + "flating: " + _z.Message);
 
                 //if (_workingBuffer.Length - _z.AvailableBytesOut > 0)
@@ -195,11 +209,24 @@ namespace Ionic.Zlib
                     _z.OutputBuffer = WorkingBuffer;
                     _z.NextOut = 0;
                     _z.AvailableBytesOut = _workingBuffer.Length;
-                    int rc = WantCompress
-                        ? _z.Deflate(FlushType.Finish)
+
+                    int consumed = 0;
+                    int written = 0;
+
+                    ZlibCode rc = WantCompress
+                        ? _z.Deflate(
+                            FlushType.Finish,
+                            _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
+                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                            out consumed, out written)
                         : _z.Inflate(FlushType.Finish);
 
-                    if (rc != ZlibConstants.Z_STREAM_END && rc != ZlibConstants.Z_OK)
+                    _z.NextIn += consumed;
+                    _z.NextOut += written;
+                    _z.AvailableBytesIn -= consumed;
+                    _z.AvailableBytesOut -= written;
+
+                    if (rc != ZlibCode.Z_STREAM_END && rc != ZlibCode.Z_OK)
                     {
                         string verb = (WantCompress ? "de" : "in") + "flating";
                         if (_z.Message == null)
@@ -480,8 +507,7 @@ namespace Ionic.Zlib
             // may initialize it.)
             _z.InputBuffer = WorkingBuffer;
 
-
-            int rc;
+            ZlibCode rc;
             do
             {
                 // need data in _workingBuffer in order to deflate/inflate.  Here, we check if we have any.
@@ -495,28 +521,42 @@ namespace Ionic.Zlib
 
                 }
                 // we have data in InputBuffer; now compress or decompress as appropriate
+
+                int consumed = 0;
+                int written = 0;
+
                 rc = WantCompress
-                    ? _z.Deflate(_flushMode)
+                    ? _z.Deflate(
+                        _flushMode,
+                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
+                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                        out consumed, out written)
                     : _z.Inflate(_flushMode);
 
-                if (nomoreinput && (rc == ZlibConstants.Z_BUF_ERROR))
+                _z.NextIn += consumed;
+                _z.NextOut += written;
+                _z.AvailableBytesIn -= consumed;
+                _z.AvailableBytesOut -= written;
+
+                if (nomoreinput && (rc == ZlibCode.Z_BUF_ERROR))
                     return 0;
 
-                if (rc != ZlibConstants.Z_OK && rc != ZlibConstants.Z_STREAM_END)
-                    throw new ZlibException(string.Format("{0}flating:  rc={1}  msg={2}", WantCompress ? "de" : "in", rc, _z.Message));
+                if (rc != ZlibCode.Z_OK && rc != ZlibCode.Z_STREAM_END)
+                    throw new ZlibException(string.Format(
+                        "{0}flating:  rc={1}  msg={2}", WantCompress ? "de" : "in", rc, _z.Message));
 
-                if ((nomoreinput || rc == ZlibConstants.Z_STREAM_END) && (_z.AvailableBytesOut == count))
+                if ((nomoreinput || rc == ZlibCode.Z_STREAM_END) && (_z.AvailableBytesOut == count))
                     break; // nothing more to read
             }
-            //while (_z.AvailableBytesOut == count && rc == ZlibConstants.Z_OK);
-            while (_z.AvailableBytesOut > 0 && !nomoreinput && rc == ZlibConstants.Z_OK);
+            //while (_z.AvailableBytesOut == count && rc == ZlibCode.Z_OK);
+            while (_z.AvailableBytesOut > 0 && !nomoreinput && rc == ZlibCode.Z_OK);
 
 
             // workitem 8557
             // is there more room in output?
             if (_z.AvailableBytesOut > 0)
             {
-                if (rc == ZlibConstants.Z_OK && _z.AvailableBytesIn == 0)
+                if (rc == ZlibCode.Z_OK && _z.AvailableBytesIn == 0)
                 {
                     // deferred
                 }
@@ -529,21 +569,30 @@ namespace Ionic.Zlib
                     {
                         // no more input data available; therefore we flush to
                         // try to complete the read
-                        rc = _z.Deflate(FlushType.Finish);
+                        rc = _z.Deflate(
+                            FlushType.Finish,
+                            _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
+                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
+                            out int consumed, out int written);
 
-                        if (rc != ZlibConstants.Z_OK && rc != ZlibConstants.Z_STREAM_END)
+                        _z.NextIn += consumed;
+                        _z.NextOut += written;
+                        _z.AvailableBytesIn -= consumed;
+                        _z.AvailableBytesOut -= written;
+
+                        if (rc != ZlibCode.Z_OK && rc != ZlibCode.Z_STREAM_END)
                             throw new ZlibException(string.Format("Deflating:  rc={0}  msg={1}", rc, _z.Message));
                     }
                 }
             }
 
 
-            rc = count - _z.AvailableBytesOut;
+            int read = count - _z.AvailableBytesOut;
 
             // calculate CRC after reading
-            _crc?.SlurpBlock(buffer.AsSpan(offset, rc));
+            _crc?.SlurpBlock(buffer.AsSpan(offset, read));
 
-            return rc;
+            return read;
         }
 
 

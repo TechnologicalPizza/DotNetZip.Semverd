@@ -654,9 +654,19 @@ namespace Ionic.Zlib
             compressor.OutputBuffer = buffer;
             compressor.NextOut = 0;
             compressor.AvailableBytesOut = buffer.Length;
-            int rc = compressor.Deflate(FlushType.Finish);
+            
+            var rc = compressor.Deflate(
+                FlushType.Finish,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out int consumed, out int written);
 
-            if (rc != ZlibConstants.Z_STREAM_END && rc != ZlibConstants.Z_OK)
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
+
+            if (rc != ZlibCode.Z_STREAM_END && rc != ZlibCode.Z_OK)
                 throw new Exception("deflating: " + compressor.Message);
 
             if (buffer.Length - compressor.AvailableBytesOut > 0)
@@ -955,7 +965,8 @@ namespace Ionic.Zlib
                 crc.SlurpBlock(workitem.buffer.AsSpan(0, workitem.inputBytesAvailable));
 
                 // deflate it
-                int rc = DeflateOneSegment(workitem);
+                var rc = DeflateOneSegment(workitem);
+                // TODO: check deflate code
 
                 // update status
                 workitem.crc = crc.Crc32Result;
@@ -988,7 +999,7 @@ namespace Ionic.Zlib
             }
         }
 
-        private static int DeflateOneSegment(WorkItem workitem)
+        private static ZlibCode DeflateOneSegment(WorkItem workitem)
         {
             ZlibCodec compressor = workitem.compressor;
             compressor.ResetDeflate();
@@ -996,17 +1007,38 @@ namespace Ionic.Zlib
 
             compressor.AvailableBytesIn = workitem.inputBytesAvailable;
 
+            int consumed;
+            int written;
+
             // step 1: deflate the buffer
             compressor.NextOut = 0;
             compressor.AvailableBytesOut = workitem.compressed.Length;
             do
             {
-                compressor.Deflate(FlushType.None);
+                compressor.Deflate(
+                    FlushType.None,
+                    compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                    compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                    out consumed, out written);
+
+                compressor.NextIn += consumed;
+                compressor.NextOut += written;
+                compressor.AvailableBytesIn -= consumed;
+                compressor.AvailableBytesOut -= written;
             }
             while (compressor.AvailableBytesIn > 0 || compressor.AvailableBytesOut == 0);
 
             // step 2: flush (sync)
-            int rc = compressor.Deflate(FlushType.Sync);
+            var rc = compressor.Deflate(
+                FlushType.Sync,
+                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
+                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
+                out consumed, out written);
+
+            compressor.NextIn += consumed;
+            compressor.NextOut += written;
+            compressor.AvailableBytesIn -= consumed;
+            compressor.AvailableBytesOut -= written;
 
             workitem.compressedBytesAvailable = (int)compressor.TotalBytesOut;
             return rc;

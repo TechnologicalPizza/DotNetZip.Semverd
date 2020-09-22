@@ -62,6 +62,44 @@
 
 namespace Ionic.Zlib
 {
+    public enum ZlibCode
+    {
+        /// <summary>
+        /// indicates everything is A-OK
+        /// </summary>
+        Z_OK = 0,
+
+        /// <summary>
+        /// Indicates that the last operation reached the end of the stream.
+        /// </summary>
+        Z_STREAM_END = 1,
+
+        /// <summary>
+        /// The operation ended in need of a dictionary. 
+        /// </summary>
+        Z_NEED_DICT = 2,
+
+        /// <summary>
+        /// There was an error with the stream - not enough data, not open and readable, etc.
+        /// </summary>
+        Z_STREAM_ERROR = -2,
+
+        /// <summary>
+        /// There was an error with the data - not enough data, bad data, etc.
+        /// </summary>
+        Z_DATA_ERROR = -3,
+
+
+        Z_MEM_ERROR = -4,
+
+        /// <summary>
+        /// There was an error with the working buffer.
+        /// </summary>
+        Z_BUF_ERROR = -5,
+
+        Z_VERSION_ERROR = -6
+    }
+
     /// <summary>
     /// A bunch of constants used in the Zlib interface.
     /// </summary>
@@ -76,36 +114,6 @@ namespace Ionic.Zlib
         /// The default number of window bits for the Deflate algorithm.
         /// </summary>
         public const int WindowBitsDefault = WindowBitsMax;
-
-        /// <summary>
-        /// indicates everything is A-OK
-        /// </summary>
-        public const int Z_OK = 0;
-
-        /// <summary>
-        /// Indicates that the last operation reached the end of the stream.
-        /// </summary>
-        public const int Z_STREAM_END = 1;
-
-        /// <summary>
-        /// The operation ended in need of a dictionary. 
-        /// </summary>
-        public const int Z_NEED_DICT = 2;
-
-        /// <summary>
-        /// There was an error with the stream - not enough data, not open and readable, etc.
-        /// </summary>
-        public const int Z_STREAM_ERROR = -2;
-
-        /// <summary>
-        /// There was an error with the data - not enough data, bad data, etc.
-        /// </summary>
-        public const int Z_DATA_ERROR = -3;
-
-        /// <summary>
-        /// There was an error with the working buffer.
-        /// </summary>
-        public const int Z_BUF_ERROR = -5;
 
         /// <summary>
         /// The size of the working buffer used in the ZlibCodec class.
