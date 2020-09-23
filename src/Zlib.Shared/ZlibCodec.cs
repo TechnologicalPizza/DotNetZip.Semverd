@@ -64,7 +64,6 @@
 // -----------------------------------------------------------------------
 
 using System;
-using System.Buffers;
 
 namespace Ionic.Zlib
 {
@@ -80,6 +79,8 @@ namespace Ionic.Zlib
     /// </remarks>
     public sealed class ZlibCodec
     {
+        internal uint _adler32;
+
         /// <summary>
         /// The buffer from which data is taken.
         /// </summary>
@@ -136,8 +137,6 @@ namespace Ionic.Zlib
         internal DeflateManager? dstate;
         internal InflateManager? istate;
 
-        internal uint _adler32;
-
         /// <summary>
         /// The compression level to use in this codec.  Useful only in compression mode.
         /// </summary>
@@ -160,21 +159,14 @@ namespace Ionic.Zlib
         /// <remarks>
         /// This is only effective in compression.  The theory offered by ZLIB is that different
         /// strategies could potentially produce significant differences in compression behavior
-        /// for different data sets.  Unfortunately I don't have any good recommendations for how
-        /// to set it differently.  When I tested changing the strategy I got minimally different
-        /// compression performance. It's best to leave this property alone if you don't have a
-        /// good feel for it.  Or, you may want to produce a test harness that runs through the
-        /// different strategy options and evaluates them on different file types. If you do that,
-        /// let me know your results.
+        /// for different data sets. 
         /// </remarks>
         public CompressionStrategy Strategy = CompressionStrategy.Default;
-
 
         /// <summary>
         /// The Adler32 checksum on the data transferred through the codec so far. You probably don't need to look at this.
         /// </summary>
         public int Adler32 { get { return (int)_adler32; } }
-
 
         /// <summary>
         /// Create a ZlibCodec.
@@ -373,6 +365,7 @@ namespace Ionic.Zlib
         {
             if (istate == null)
                 throw new ZlibException("No Inflate State!");
+
             var ret = istate.End();
             istate = null;
             return ret;
