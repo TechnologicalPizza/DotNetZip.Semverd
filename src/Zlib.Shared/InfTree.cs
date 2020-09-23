@@ -321,40 +321,45 @@ namespace Ionic.Zlib
             return y != 0 && g != 1 ? ZlibCode.Z_BUF_ERROR : ZlibCode.Z_OK;
         }
 
-        internal ZlibCode InflateTreesBits(int[] c, ref int bb, ref int tb, int[] hp, ZlibCodec z)
+        internal ZlibCode InflateTreesBits(int[] c, ref int bb, ref int tb, int[] hp, out string? message)
         {
             InitWorkArea(19);
             hn[0] = 0;
-            var result = HuftBuild(c, 0, 19, 19, null, null, ref tb, ref bb, hp, hn, v);
 
+            message = null;
+            var result = HuftBuild(c, 0, 19, 19, null, null, ref tb, ref bb, hp, hn, v);
             if (result == ZlibCode.Z_DATA_ERROR)
             {
-                z.Message = "oversubscribed dynamic bit lengths tree";
+                message = "oversubscribed dynamic bit lengths tree";
             }
             else if (result == ZlibCode.Z_BUF_ERROR || bb == 0)
             {
-                z.Message = "incomplete dynamic bit lengths tree";
+                message = "incomplete dynamic bit lengths tree";
                 result = ZlibCode.Z_DATA_ERROR;
             }
+
             return result;
         }
 
         internal ZlibCode InflateTreesDynamic(
-            int nl, int nd, int[] c, ref int bl, ref int bd, ref int tl, ref int td, int[] hp, ZlibCodec z)
+            int nl, int nd, int[] c, ref int bl, ref int bd, ref int tl, ref int td, int[] hp, out string? message)
         {
+
             // build literal/length tree
             InitWorkArea(288);
             hn[0] = 0;
+
+            message = null;
             var result = HuftBuild(c, 0, nl, 257, cplens, cplext, ref tl, ref bl, hp, hn, v);
             if (result != ZlibCode.Z_OK || bl == 0)
             {
                 if (result == ZlibCode.Z_DATA_ERROR)
                 {
-                    z.Message = "oversubscribed literal/length tree";
+                    message = "oversubscribed literal/length tree";
                 }
                 else if (result != ZlibCode.Z_MEM_ERROR)
                 {
-                    z.Message = "incomplete literal/length tree";
+                    message = "incomplete literal/length tree";
                     result = ZlibCode.Z_DATA_ERROR;
                 }
                 return result;
@@ -368,16 +373,16 @@ namespace Ionic.Zlib
             {
                 if (result == ZlibCode.Z_DATA_ERROR)
                 {
-                    z.Message = "oversubscribed distance tree";
+                    message = "oversubscribed distance tree";
                 }
                 else if (result == ZlibCode.Z_BUF_ERROR)
                 {
-                    z.Message = "incomplete distance tree";
+                    message = "incomplete distance tree";
                     result = ZlibCode.Z_DATA_ERROR;
                 }
                 else if (result != ZlibCode.Z_MEM_ERROR)
                 {
-                    z.Message = "empty distance tree with lengths";
+                    message = "empty distance tree with lengths";
                     result = ZlibCode.Z_DATA_ERROR;
                 }
                 return result;
@@ -387,7 +392,7 @@ namespace Ionic.Zlib
         }
 
         internal static ZlibCode InflateTreesFixed(
-            ref int bl, ref int bd, out int[] tl, out int[] td, ZlibCodec z)
+            ref int bl, ref int bd, out int[] tl, out int[] td)
         {
             bl = fixed_bl;
             bd = fixed_bd;

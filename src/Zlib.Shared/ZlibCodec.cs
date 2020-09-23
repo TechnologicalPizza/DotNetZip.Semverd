@@ -273,9 +273,10 @@ namespace Ionic.Zlib
         /// <returns>Z_OK if everything goes well.</returns>
         public ZlibCode InitializeInflate(int windowBits, bool expectRfc1950Header)
         {
-            WindowBits = windowBits;
             if (dstate != null)
                 throw new ZlibException("You may not call InitializeInflate() after calling InitializeDeflate().");
+
+            WindowBits = windowBits;
             istate = new InflateManager(expectRfc1950Header);
             return istate.Initialize(this, windowBits);
         }
@@ -372,13 +373,13 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        /// I don't know what this does!
         /// </summary>
         /// <returns>Z_OK if everything goes well.</returns>
         public ZlibCode SyncInflate()
         {
             if (istate == null)
                 throw new ZlibException("No Inflate State!");
+
             return istate.Sync();
         }
 
@@ -472,7 +473,7 @@ namespace Ionic.Zlib
         /// The codec will use the specified number of window bits and the specified CompressionLevel.
         /// </remarks>
         /// <param name="level">The compression level for the codec.</param>
-        /// <param name="bits">the number of window bits to use.  If you don't know what this means, don't use this method.</param>
+        /// <param name="bits">The number of window bits to use.</param>
         /// <returns>Z_OK if all goes well.</returns>
         public ZlibCode InitializeDeflate(CompressionLevel level, int bits)
         {
@@ -489,7 +490,7 @@ namespace Ionic.Zlib
         ///
         /// <param name="level">The compression level for the codec.</param>
         /// <param name="wantRfc1950Header">whether to emit an initial RFC1950 byte pair in the compressed stream.</param>
-        /// <param name="bits">the number of window bits to use.  If you don't know what this means, don't use this method.</param>
+        /// <param name="bits">The number of window bits to use.</param>
         /// <returns>Z_OK if all goes well.</returns>
         public ZlibCode InitializeDeflate(CompressionLevel level, int bits, bool wantRfc1950Header)
         {
