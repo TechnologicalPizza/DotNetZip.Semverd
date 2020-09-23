@@ -1533,6 +1533,23 @@ namespace Ionic.Zlib
         }
     }
 
+    internal enum InflateManagerMode
+    {
+        METHOD = 0,  // waiting for method byte
+        FLAG = 1,  // waiting for flag byte
+        DICT4 = 2,  // four dictionary check bytes to go
+        DICT3 = 3,  // three dictionary check bytes to go
+        DICT2 = 4,  // two dictionary check bytes to go
+        DICT1 = 5,  // one dictionary check byte to go
+        DICT0 = 6,  // waiting for inflateSetDictionary
+        BLOCKS = 7,  // decompressing blocks
+        CHECK4 = 8,  // four check bytes to go
+        CHECK3 = 9,  // three check bytes to go
+        CHECK2 = 10, // two check bytes to go
+        CHECK1 = 11, // one check byte to go
+        DONE = 12, // finished check, done
+        BAD = 13, // got an error--stay here
+    }
 
     internal sealed class InflateManager
     {
@@ -1541,23 +1558,7 @@ namespace Ionic.Zlib
 
         private const int Z_DEFLATED = 8;
 
-        private enum InflateManagerMode
-        {
-            METHOD = 0,  // waiting for method byte
-            FLAG = 1,  // waiting for flag byte
-            DICT4 = 2,  // four dictionary check bytes to go
-            DICT3 = 3,  // three dictionary check bytes to go
-            DICT2 = 4,  // two dictionary check bytes to go
-            DICT1 = 5,  // one dictionary check byte to go
-            DICT0 = 6,  // waiting for inflateSetDictionary
-            BLOCKS = 7,  // decompressing blocks
-            CHECK4 = 8,  // four check bytes to go
-            CHECK3 = 9,  // three check bytes to go
-            CHECK2 = 10, // two check bytes to go
-            CHECK1 = 11, // one check byte to go
-            DONE = 12, // finished check, done
-            BAD = 13, // got an error--stay here
-        }
+        private static readonly byte[] mark = new byte[] { 0, 0, 0xff, 0xff };
 
         private InflateManagerMode mode; // current inflate mode
         internal ZlibCodec _codec; // pointer back to this zlib stream
@@ -1644,10 +1645,10 @@ namespace Ionic.Zlib
             if (_codec.InputBuffer == null)
                 throw new ZlibException("InputBuffer is null. ");
 
-            //             int f = (flush == FlushType.Finish)
-            //                 ? ZlibCode.Z_BUF_ERROR
-            //                 : ZlibCode.Z_OK;
-
+            //int f = (flush == FlushType.Finish)
+            //    ? ZlibCode.Z_BUF_ERROR
+            //    : ZlibCode.Z_OK;
+            
             // workitem 8870
             var f = ZlibCode.Z_OK;
             var r = ZlibCode.Z_BUF_ERROR;
@@ -1869,9 +1870,6 @@ namespace Ionic.Zlib
             return ZlibCode.Z_OK;
         }
 
-
-        private static readonly byte[] mark = new byte[] { 0, 0, 0xff, 0xff };
-
         internal ZlibCode Sync()
         {
             int n; // number of bytes to look at
@@ -1937,7 +1935,7 @@ namespace Ionic.Zlib
         /// decompressing, PPP checks that at the end of input packet, inflate is
         /// waiting for these length bytes.
         /// </summary>
-        internal int SyncPoint(ZlibCodec z)
+        internal int SyncPoint()
         {
             if (blocks == null)
                 throw new InvalidOperationException();
