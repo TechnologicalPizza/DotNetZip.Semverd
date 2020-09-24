@@ -249,7 +249,7 @@ namespace Ionic.Zlib
         // negative when the window is moved backwards.
 
         internal int block_start;
-        private Config config;
+        private Config _config;
         internal int match_length;    // length of best match
         internal int prev_match;      // previous match
         internal int match_available; // set if previous match exists
@@ -265,8 +265,8 @@ namespace Ionic.Zlib
         // greater than this length. This saves time but degrades compression.
         // max_insert_length is used only for compression levels <= 3.
 
-        internal CompressionLevel compressionLevel; // compression level (1..9)
-        internal CompressionStrategy compressionStrategy; // favor or force Huffman coding
+        internal CompressionLevel _compressionLevel; // compression level (1..9)
+        internal CompressionStrategy _compressionStrategy; // favor or force Huffman coding
 
 
         internal short[] dyn_ltree;         // literal and length tree
@@ -358,7 +358,7 @@ namespace Ionic.Zlib
             Array.Clear(head, 0, hash_size);
             //for (int i = 0; i < hash_size; i++) head[i] = 0;
 
-            config = Config.Lookup(compressionLevel);
+            _config = Config.Lookup(_compressionLevel);
             SetDeflater();
 
             strstart = 0;
@@ -754,7 +754,7 @@ namespace Ionic.Zlib
                 dyn_dtree[Tree.DistanceCode(dist) * 2]++;
             }
 
-            if ((last_lit & 0x1fff) == 0 && (int)compressionLevel > 2)
+            if ((last_lit & 0x1fff) == 0 && (int)_compressionLevel > 2)
             {
                 // Compute an upper bound for the compressed length
                 int out_length = last_lit << 3;
@@ -1047,7 +1047,7 @@ namespace Ionic.Zlib
             int max_blindex = 0; // index of last bit length code of non zero freq
 
             // Build the Huffman trees unless a stored block is forced
-            if (compressionLevel > 0)
+            if (_compressionLevel > 0)
             {
                 // Check if the file is ascii or binary
                 if (data_type == Z_UNKNOWN)
@@ -1267,7 +1267,7 @@ namespace Ionic.Zlib
                     // To simplify the code, we prevent matches with the string
                     // of window index 0 (in particular we have to avoid a match
                     // of the string with itself at the start of the input file).
-                    if (compressionStrategy != CompressionStrategy.HuffmanOnly)
+                    if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
                     {
                         match_length = LongestMatch(hash_head);
                     }
@@ -1283,7 +1283,7 @@ namespace Ionic.Zlib
 
                     // Insert new strings in the hash table only if the match length
                     // is not too large. This saves time but degrades compression.
-                    if (match_length <= config.MaxLazy && lookahead >= MIN_MATCH)
+                    if (match_length <= _config.MaxLazy && lookahead >= MIN_MATCH)
                     {
                         match_length--; // string at strstart already in hash table
                         do
@@ -1399,20 +1399,20 @@ namespace Ionic.Zlib
                 prev_match = match_start;
                 match_length = MIN_MATCH - 1;
 
-                if (hash_head != 0 && prev_length < config.MaxLazy &&
+                if (hash_head != 0 && prev_length < _config.MaxLazy &&
                     ((strstart - hash_head) & 0xffff) <= w_size - MIN_LOOKAHEAD)
                 {
                     // To simplify the code, we prevent matches with the string
                     // of window index 0 (in particular we have to avoid a match
                     // of the string with itself at the start of the input file).
 
-                    if (compressionStrategy != CompressionStrategy.HuffmanOnly)
+                    if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
                     {
                         match_length = LongestMatch(hash_head);
                     }
                     // longest_match() sets match_start
 
-                    if (match_length <= 5 && (compressionStrategy == CompressionStrategy.Filtered ||
+                    if (match_length <= 5 && (_compressionStrategy == CompressionStrategy.Filtered ||
                                               (match_length == MIN_MATCH && strstart - match_start > 4096)))
                     {
 
@@ -1521,14 +1521,14 @@ namespace Ionic.Zlib
 
         internal int LongestMatch(int cur_match)
         {
-            int chain_length = config.MaxChainLength; // max hash chain length
+            int chain_length = _config.MaxChainLength; // max hash chain length
             int scan = strstart;                      // current string
             int match;                                // matched string
             int len;                                  // length of current match
             int best_len = prev_length;               // best match length so far
             int limit = strstart > (w_size - MIN_LOOKAHEAD) ? strstart - (w_size - MIN_LOOKAHEAD) : 0;
 
-            int niceLength = config.NiceLength;
+            int niceLength = _config.NiceLength;
 
             // Stop when cur_match becomes <= limit. To simplify the code,
             // we prevent matches with the string of window index 0.
@@ -1543,7 +1543,7 @@ namespace Ionic.Zlib
             // It is easy to get rid of this optimization if necessary.
 
             // Do not waste too much time if we already have a good match:
-            if (prev_length >= config.GoodLength)
+            if (prev_length >= _config.GoodLength)
             {
                 chain_length >>= 2;
             }
@@ -1627,16 +1627,16 @@ namespace Ionic.Zlib
         internal ZlibCode Initialize(
             ZlibCodec codec, CompressionLevel level, int windowBits, int memLevel, CompressionStrategy strategy)
         {
-            _codec = codec;
-            _codec.Message = null;
-
-            // validation
             if (windowBits < 9 || windowBits > 15)
-                throw new ZlibException("windowBits must be in the range 9..15.");
+                throw new ArgumentOutOfRangeException(
+                    nameof(windowBits), "windowBits must be in the range 9..15.");
 
             if (memLevel < 1 || memLevel > MEM_LEVEL_MAX)
-                throw new ZlibException(string.Format("memLevel must be in the range 1.. {0}", MEM_LEVEL_MAX));
+                throw new ArgumentOutOfRangeException(
+                    nameof(memLevel), string.Format("memLevel must be in the range 1.. {0}", MEM_LEVEL_MAX));
 
+            _codec = codec;
+            _codec.Message = null;
             _codec.dstate = this;
 
             w_bits = windowBits;
@@ -1668,19 +1668,17 @@ namespace Ionic.Zlib
             // The middle slice, of 32k, is used for distance codes.
             // The final 16k are length codes.
 
-            compressionLevel = level;
-            compressionStrategy = strategy;
+            _compressionLevel = level;
+            _compressionStrategy = strategy;
 
             Reset();
-            return ZlibCode.Z_OK;
+            return ZlibCode.Ok;
         }
 
 
         internal void Reset()
         {
-            _codec.TotalBytesIn = _codec.TotalBytesOut = 0;
             _codec.Message = null;
-            //strm.data_type = Z_UNKNOWN;
 
             pendingCount = 0;
             nextPending = 0;
@@ -1701,7 +1699,7 @@ namespace Ionic.Zlib
         {
             if (status != INIT_STATE && status != BUSY_STATE && status != FINISH_STATE)
             {
-                return ZlibCode.Z_STREAM_ERROR;
+                return ZlibCode.StreamError;
             }
             // Deallocate in reverse order of allocations:
             pending = null;
@@ -1710,13 +1708,13 @@ namespace Ionic.Zlib
             window = null;
             // free
             // dstate=null;
-            return status == BUSY_STATE ? ZlibCode.Z_DATA_ERROR : ZlibCode.Z_OK;
+            return status == BUSY_STATE ? ZlibCode.DataError : ZlibCode.Ok;
         }
 
 
         private void SetDeflater()
         {
-            switch (config.Flavor)
+            switch (_config.Flavor)
             {
                 case DeflateFlavor.Store:
                     DeflateFunction = DeflateNone;
@@ -1738,29 +1736,29 @@ namespace Ionic.Zlib
             ReadOnlySpan<byte> input, Span<byte> output,
             out int consumed, out int written)
         {
-            var result = ZlibCode.Z_OK;
+            var result = ZlibCode.Ok;
             consumed = 0;
             written = 0;
 
-            if (compressionLevel != level)
+            if (_compressionLevel != level)
             {
-                Config newConfig = Config.Lookup(level);
+                var newConfig = Config.Lookup(level);
 
                 // change in the deflate flavor (Fast vs slow vs none)?
-                if (newConfig.Flavor != config.Flavor && _codec.TotalBytesIn != 0)
+                if (newConfig.Flavor != _config.Flavor)
                 {
                     // Flush the last buffer:
                     result = _codec.Deflate(
                         FlushType.Partial, input, output, out consumed, out written);
                 }
 
-                compressionLevel = level;
-                config = newConfig;
+                _compressionLevel = level;
+                _config = newConfig;
                 SetDeflater();
             }
 
             // no need to flush with change in strategy?  Really?
-            compressionStrategy = strategy;
+            _compressionStrategy = strategy;
 
             return result;
         }
@@ -1777,7 +1775,7 @@ namespace Ionic.Zlib
             _codec._adler32 = Adler.Adler32(_codec._adler32, dictionary);
 
             if (length < MIN_MATCH)
-                return ZlibCode.Z_OK;
+                return ZlibCode.Ok;
 
             if (length > w_size - MIN_LOOKAHEAD)
             {
@@ -1801,7 +1799,7 @@ namespace Ionic.Zlib
                 prev[n & w_mask] = head[ins_h];
                 head[ins_h] = (short)n;
             }
-            return ZlibCode.Z_OK;
+            return ZlibCode.Ok;
         }
 
 
@@ -1812,12 +1810,12 @@ namespace Ionic.Zlib
         {
             if (status == FINISH_STATE && flush != FlushType.Finish)
             {
-                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_STREAM_ERROR];
+                _codec.Message = _ErrorMessage[ZlibCode.NeedDict - ZlibCode.StreamError];
                 throw new ZlibException(string.Format("Something is fishy. [{0}]", _codec.Message));
             }
             if (output.Length == 0)
             {
-                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_BUF_ERROR];
+                _codec.Message = _ErrorMessage[ZlibCode.NeedDict - ZlibCode.BufError];
                 throw new ZlibException("No room in output.");
             }
 
@@ -1828,7 +1826,7 @@ namespace Ionic.Zlib
             if (status == INIT_STATE)
             {
                 int header = (Z_DEFLATED + ((w_bits - 8) << 4)) << 8;
-                int level_flags = (((int)compressionLevel - 1) & 0xff) >> 1;
+                int level_flags = (((int)_compressionLevel - 1) & 0xff) >> 1;
 
                 if (level_flags > 3)
                     level_flags = 3;
@@ -1875,7 +1873,7 @@ namespace Ionic.Zlib
                     // but this is not an error situation so make sure we
                     // return OK instead of BUF_ERROR at next call of deflate:
                     last_flush = -1;
-                    return ZlibCode.Z_OK;
+                    return ZlibCode.Ok;
                 }
 
                 // Make sure there is something to do and avoid duplicate consecutive
@@ -1896,13 +1894,13 @@ namespace Ionic.Zlib
                 // _codec.Message = z_errmsg[ZlibConstants.Z_NEED_DICT - (ZlibConstants.Z_BUF_ERROR)];
                 // throw new ZlibException("input.Length == 0 && flush<=old_flush && flush != FlushType.Finish");
 
-                return ZlibCode.Z_OK;
+                return ZlibCode.Ok;
             }
 
             // User must not provide more input after the first FINISH:
             if (status == FINISH_STATE && input.Length != 0)
             {
-                _codec.Message = _ErrorMessage[ZlibCode.Z_NEED_DICT - ZlibCode.Z_BUF_ERROR];
+                _codec.Message = _ErrorMessage[ZlibCode.NeedDict - ZlibCode.BufError];
                 throw new ZlibException("status == FINISH_STATE && input.Length != 0");
             }
 
@@ -1912,7 +1910,7 @@ namespace Ionic.Zlib
                 BlockState bstate = DeflateFunction(
                     flush, input, output, out int dconsumed, out int dwritten);
 
-                input = input.Slice(dconsumed);
+                //input = input.Slice(dconsumed); // unnecessary
                 output = output.Slice(dwritten);
                 consumed += dconsumed;
                 written += dwritten;
@@ -1928,7 +1926,7 @@ namespace Ionic.Zlib
                     {
                         last_flush = -1; // avoid BUF_ERROR next call, see above
                     }
-                    return ZlibCode.Z_OK;
+                    return ZlibCode.Ok;
                     // If flush != Z_NO_FLUSH && avail_out == 0, the next call
                     // of deflate should use the same flush parameter to make sure
                     // that the flush is complete. So we don't have to output an
@@ -1964,34 +1962,29 @@ namespace Ionic.Zlib
                     if (output.Length == 0)
                     {
                         last_flush = -1; // avoid BUF_ERROR at next call, see above
-                        return ZlibCode.Z_OK;
+                        return ZlibCode.Ok;
                     }
                 }
             }
 
             if (flush != FlushType.Finish)
-                return ZlibCode.Z_OK;
+                return ZlibCode.Ok;
 
             if (!WantRfc1950HeaderBytes || Rfc1950BytesEmitted)
-                return ZlibCode.Z_STREAM_END;
+                return ZlibCode.StreamEnd;
 
             // Write the zlib trailer (adler32)
             pending[pendingCount++] = (byte)((_codec._adler32 & 0xFF000000) >> 24);
             pending[pendingCount++] = (byte)((_codec._adler32 & 0x00FF0000) >> 16);
             pending[pendingCount++] = (byte)((_codec._adler32 & 0x0000FF00) >> 8);
             pending[pendingCount++] = (byte)(_codec._adler32 & 0x000000FF);
-            //putShortMSB((int)(SharedUtils.URShift(_codec._Adler32, 16)));
-            //putShortMSB((int)(_codec._Adler32 & 0xffff));
-
+            
             _codec.FlushPending(output, out fwritten);
             written += fwritten;
 
-            // If avail_out is zero, the application will call deflate again
-            // to flush the rest.
-
             Rfc1950BytesEmitted = true; // write the trailer only once!
 
-            return pendingCount != 0 ? ZlibCode.Z_OK : ZlibCode.Z_STREAM_END;
+            return pendingCount != 0 ? ZlibCode.Ok : ZlibCode.StreamEnd;
         }
 
     }

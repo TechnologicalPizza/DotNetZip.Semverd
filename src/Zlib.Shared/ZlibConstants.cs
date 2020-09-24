@@ -67,37 +67,37 @@ namespace Ionic.Zlib
         /// <summary>
         /// indicates everything is A-OK
         /// </summary>
-        Z_OK = 0,
+        Ok = 0,
 
         /// <summary>
         /// Indicates that the last operation reached the end of the stream.
         /// </summary>
-        Z_STREAM_END = 1,
+        StreamEnd = 1,
 
         /// <summary>
         /// The operation ended in need of a dictionary. 
         /// </summary>
-        Z_NEED_DICT = 2,
+        NeedDict = 2,
 
         /// <summary>
         /// There was an error with the stream - not enough data, not open and readable, etc.
         /// </summary>
-        Z_STREAM_ERROR = -2,
+        StreamError = -2,
 
         /// <summary>
         /// There was an error with the data - not enough data, bad data, etc.
         /// </summary>
-        Z_DATA_ERROR = -3,
+        DataError = -3,
 
 
-        Z_MEM_ERROR = -4,
+        MemError = -4,
 
         /// <summary>
         /// There was an error with the working buffer.
         /// </summary>
-        Z_BUF_ERROR = -5,
+        BufError = -5,
 
-        Z_VERSION_ERROR = -6
+        VersionError = -6
     }
 
     /// <summary>

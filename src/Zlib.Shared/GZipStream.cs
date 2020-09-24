@@ -600,7 +600,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return _baseStream._z.TotalBytesIn;
+                throw new NotImplementedException();
             }
         }
 
@@ -609,7 +609,7 @@ namespace Ionic.Zlib
         {
             get
             {
-                return _baseStream._z.TotalBytesOut;
+                throw new NotImplementedException();
             }
         }
 
@@ -738,10 +738,12 @@ namespace Ionic.Zlib
         {
             get
             {
-                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
-                    return _baseStream._z.TotalBytesOut + _headerByteCount;
-                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
-                    return _baseStream._z.TotalBytesIn + _baseStream._gzipHeaderByteCount;
+                throw new NotImplementedException();
+
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
+                //    return _baseStream._z.TotalBytesOut + _headerByteCount;
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
+                //    return _baseStream._z.TotalBytesIn + _baseStream._gzipHeaderByteCount;
                 return 0;
             }
 

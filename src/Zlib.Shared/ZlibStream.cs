@@ -375,13 +375,13 @@ namespace Ionic.Zlib
         /// <summary> Returns the total number of bytes input so far.</summary>
         public virtual long TotalIn
         {
-            get { return _baseStream._z.TotalBytesIn; }
+            get { throw new NotImplementedException(); }
         }
 
         /// <summary> Returns the total number of bytes output so far.</summary>
         public virtual long TotalOut
         {
-            get { return _baseStream._z.TotalBytesOut; }
+            get { throw new NotImplementedException(); }
         }
 
         #endregion
@@ -505,10 +505,11 @@ namespace Ionic.Zlib
         {
             get
             {
-                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
-                    return _baseStream._z.TotalBytesOut;
-                if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
-                    return _baseStream._z.TotalBytesIn;
+                throw new NotImplementedException();
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
+                //    return _baseStream._z.TotalBytesOut;
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
+                //    return _baseStream._z.TotalBytesIn;
                 return 0;
             }
 

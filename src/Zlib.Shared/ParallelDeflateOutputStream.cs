@@ -286,13 +286,18 @@ namespace Ionic.Zlib
         /// <param name="leaveOpen">
         ///    true if the application would like the stream to remain open after inflation/deflation.
         /// </param>
-        public ParallelDeflateOutputStream(Stream stream,
-                                           CompressionLevel level,
-                                           CompressionStrategy strategy,
-                                           bool leaveOpen)
+        public ParallelDeflateOutputStream(
+            Stream stream,
+            CompressionLevel level,
+            CompressionStrategy strategy,
+            bool leaveOpen)
         {
-            TraceOutput(TraceBits.Lifecycle | TraceBits.Session, "-------------------------------------------------------");
+            TraceOutput(
+                TraceBits.Lifecycle | TraceBits.Session,
+                "-------------------------------------------------------");
+
             TraceOutput(TraceBits.Lifecycle | TraceBits.Session, "Create {0:X8}", GetHashCode());
+
             _outStream = stream;
             _compressLevel = level;
             Strategy = strategy;
@@ -666,7 +671,7 @@ namespace Ionic.Zlib
             compressor.AvailableBytesIn -= consumed;
             compressor.AvailableBytesOut -= written;
 
-            if (rc != ZlibCode.Z_STREAM_END && rc != ZlibCode.Z_OK)
+            if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
                 throw new Exception("deflating: " + compressor.Message);
 
             if (buffer.Length - compressor.AvailableBytesOut > 0)
@@ -1040,7 +1045,7 @@ namespace Ionic.Zlib
             compressor.AvailableBytesIn -= consumed;
             compressor.AvailableBytesOut -= written;
 
-            workitem.compressedBytesAvailable = (int)compressor.TotalBytesOut;
+            workitem.compressedBytesAvailable = written;
             return rc;
         }
 

@@ -101,11 +101,6 @@ namespace Ionic.Zlib
         public int AvailableBytesIn;
 
         /// <summary>
-        /// Total number of bytes read so far, through all calls to Inflate()/Deflate().
-        /// </summary>
-        public long TotalBytesIn;
-
-        /// <summary>
         /// Buffer to store output data.
         /// </summary>
         public byte[] OutputBuffer;
@@ -123,11 +118,6 @@ namespace Ionic.Zlib
         /// The class will update this number as calls to Inflate/Deflate are made.
         /// </remarks>
         public int AvailableBytesOut;
-
-        /// <summary>
-        /// Total number of bytes written to the output so far, through all calls to Inflate()/Deflate().
-        /// </summary>
-        public long TotalBytesOut;
 
         /// <summary>
         /// used for diagnostics, when something goes wrong!
@@ -191,13 +181,13 @@ namespace Ionic.Zlib
             if (mode == CompressionMode.Compress)
             {
                 var rc = InitializeDeflate();
-                if (rc != ZlibCode.Z_OK)
+                if (rc != ZlibCode.Ok)
                     throw new ZlibException("Cannot initialize for deflate.");
             }
             else if (mode == CompressionMode.Decompress)
             {
                 var rc = InitializeInflate();
-                if (rc != ZlibCode.Z_OK)
+                if (rc != ZlibCode.Ok)
                     throw new ZlibException("Cannot initialize for inflate.");
             }
             else
@@ -344,12 +334,14 @@ namespace Ionic.Zlib
         /// </example>
         /// <param name="flush">The flush to use when inflating.</param>
         /// <returns>Z_OK if everything goes well.</returns>
-        public ZlibCode Inflate(FlushType flush, Span<byte> output, out int written)
+        public ZlibCode Inflate(
+            FlushType flush, ReadOnlySpan<byte> input, Span<byte> output, 
+            out int consumed, out int written)
         {
             if (istate == null)
                 throw new ZlibException("No Inflate State!");
 
-            return istate.Inflate(flush, output, out written);
+            return istate.Inflate(flush, input, output, out consumed, out written);
         }
 
 
@@ -601,7 +593,7 @@ namespace Ionic.Zlib
             // TODO: dinoch Tue, 03 Nov 2009  15:39 (test this)
             //int ret = dstate.End();
             dstate = null;
-            return ZlibCode.Z_OK; //ret;
+            return ZlibCode.Ok; //ret;
         }
 
         /// <summary>
@@ -704,12 +696,10 @@ namespace Ionic.Zlib
             written += len;
 
             dstate.nextPending += len;
-            TotalBytesOut += len;
             dstate.pendingCount -= len;
+
             if (dstate.pendingCount == 0)
-            {
                 dstate.nextPending = 0;
-            }
         }
 
         /// <summary>
@@ -732,7 +722,6 @@ namespace Ionic.Zlib
 
             input.CopyTo(output);
 
-            TotalBytesIn += input.Length;
             return input.Length;
         }
 
