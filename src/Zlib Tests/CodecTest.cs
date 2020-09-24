@@ -276,13 +276,14 @@ namespace Ionic.Zlib.Tests
             var CompressedBytes = new byte[bufferSize];
             var DecompressedBytes = new byte[bufferSize];
             string TextToCompress = "This is the text that will be compressed.";
+            int lengthSkip = 3;
             var BytesToCompress = Encoding.ASCII.GetBytes(TextToCompress);
 
             var compressor = new ZlibCodec(CompressionMode.Compress);
 
             compressor.InputBuffer = BytesToCompress;
             compressor.NextIn = 0;
-            compressor.AvailableBytesIn = 3;
+            compressor.AvailableBytesIn = lengthSkip;
 
             compressor.OutputBuffer = CompressedBytes;
             compressor.NextOut = 0;
@@ -300,7 +301,7 @@ namespace Ionic.Zlib.Tests
             compressor.AvailableBytesOut -= written;
 
             CompressedBytes[3]++; // force an error in first compressed block // dinoch - ??
-            compressor.AvailableBytesIn = TextToCompress.Length - 3;
+            compressor.AvailableBytesIn = TextToCompress.Length - lengthSkip;
 
             rc = compressor.Deflate(
                 FlushType.Finish,
@@ -337,7 +338,12 @@ namespace Ionic.Zlib.Tests
 
             decompressor.AvailableBytesIn = bufferSize - 2;
 
-            rc = decompressor.SyncInflate();
+            rc = decompressor.SyncInflate(
+                decompressor.InputBuffer.AsSpan(
+                    decompressor.NextIn, decompressor.AvailableBytesIn),
+                out int syncConsumed);
+            decompressor.NextIn += syncConsumed;
+            decompressor.AvailableBytesIn -= syncConsumed;
 
             bool gotException = false;
             try
@@ -367,7 +373,8 @@ namespace Ionic.Zlib.Tests
 
             var result = Encoding.ASCII.GetString(DecompressedBytes, 0, j);
 
-            Assert.AreEqual(TextToCompress.Length, result.Length + 3, "Strings are unequal lengths");
+            Assert.AreEqual(TextToCompress.Length, result.Length + lengthSkip, "Strings are unequal lengths");
+            Assert.AreEqual(TextToCompress.Substring(lengthSkip), result, "Strings are unequal");
 
             Console.WriteLine("orig length: {0}", TextToCompress.Length);
             Console.WriteLine("compressed length: {0}", compressor.TotalBytesOut);

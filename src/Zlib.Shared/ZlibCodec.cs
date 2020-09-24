@@ -375,12 +375,12 @@ namespace Ionic.Zlib
         /// <summary>
         /// </summary>
         /// <returns>Z_OK if everything goes well.</returns>
-        public ZlibCode SyncInflate()
+        public ZlibCode SyncInflate(ReadOnlySpan<byte> input, out int consumed)
         {
             if (istate == null)
                 throw new ZlibException("No Inflate State!");
 
-            return istate.Sync();
+            return istate.Sync(input, out consumed);
         }
 
         /// <summary>

@@ -3,10 +3,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Ionic.Zlib.Tests
 {
-    [TestClass]
+    //[TestClass]
     public class ToolTest : TestHarness
     {
-        /*
         [TestMethod]
         public void GZ_Utility()
         {
@@ -53,6 +52,5 @@ namespace Ionic.Zlib.Tests
                     "CRC mismatch {0:X8}!={1:X8}", crcOriginal, crcDecompressed);
             }
         }
-        */
     }
 }
