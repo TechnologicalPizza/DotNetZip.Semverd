@@ -121,15 +121,16 @@ namespace Ionic.Zlib.Tests
 
             rc = decompressor.InitializeInflate();
             Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at InitializeInflate() [{0}]", decompressor.Message));
-            //CheckForError(decompressingStream, rc, "inflateInit");
-
+            
             int decompressorTotalBytesIn = 0;
             int decompressorTotalBytesOut = 0;
             while (
                 decompressorTotalBytesOut < decompressedBytes.Length &&
                 decompressorTotalBytesIn < bufferSize)
             {
-                decompressor.AvailableBytesIn = decompressor.AvailableBytesOut = 1; /* force small buffers */
+                // force small buffers
+                decompressor.AvailableBytesIn = 1;
+                decompressor.AvailableBytesOut = 1; 
 
                 rc = decompressor.Inflate(
                     FlushType.None,
@@ -147,13 +148,11 @@ namespace Ionic.Zlib.Tests
                 if (rc == ZlibCode.StreamEnd)
                     break;
                 Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at Inflate() [{0}]", decompressor.Message));
-                //CheckForError(decompressingStream, rc, "inflate");
             }
 
             rc = decompressor.EndInflate();
             Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
-            //CheckForError(decompressingStream, rc, "inflateEnd");
-
+            
             int j = 0;
             for (; j < decompressedBytes.Length; j++)
                 if (decompressedBytes[j] == 0)
@@ -1674,7 +1673,7 @@ namespace Ionic.Zlib.Tests
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
             TestContext.WriteLine("{0}: Zlib_ParallelDeflateStream2 Start", sw.Elapsed);
-            int sz = (128 * 1024) /*default buffer size*/ * Rnd.Next(14, 28);
+            int sz = (128 * 1024) * Rnd.Next(14, 28); // 128k = default buffer size;
             using (var s = new MemoryStream())
             {
                 TestContext.WriteLine("{0}: Creating zip...", sw.Elapsed);

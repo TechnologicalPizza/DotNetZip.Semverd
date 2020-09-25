@@ -25,6 +25,7 @@
 // ------------------------------------------------------------------
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 
 namespace Ionic.Zlib
@@ -54,6 +55,7 @@ namespace Ionic.Zlib
         protected internal CompressionLevel _level;
         protected internal bool _leaveOpen;
         protected internal byte[] _workingBuffer;
+        private Memory<byte> _leftover;
         protected internal int _bufferSize = ZlibConstants.WorkingBufferSizeDefault;
 
         protected internal Stream _stream;
@@ -86,6 +88,7 @@ namespace Ionic.Zlib
             _compressionMode = compressionMode;
             _flavor = flavor;
             _level = level;
+
             // workitem 7159
             if (flavor == ZlibStreamFlavor.GZIP)
             {
@@ -136,67 +139,53 @@ namespace Ionic.Zlib
             }
         }
 
-
-
-        public override void Write(byte[] buffer, int offset, int count)
+        public override void Write(ReadOnlySpan<byte> buffer)
         {
-            // workitem 7159
-            // calculate the CRC on the unccompressed data  (before writing)
-            _crc?.SlurpBlock(buffer.AsSpan(offset, count));
-
             if (_streamMode == StreamMode.Undefined)
                 _streamMode = StreamMode.Writer;
             else if (_streamMode != StreamMode.Writer)
                 throw new ZlibException("Cannot Write after Reading.");
 
-            if (count == 0)
+            if (buffer.Length == 0)
                 return;
 
-            // first reference of z property will initialize the private var _z
-            Z.InputBuffer = buffer;
-            _z.NextIn = offset;
-            _z.AvailableBytesIn = count;
+            // calculate the CRC on the uncompressed data
+            _crc?.SlurpBlock(buffer);
+
+            var z = Z;
+            var input = buffer;
+            var output = WorkingBuffer.AsSpan();
+
             bool done;
             do
             {
-                _z.OutputBuffer = WorkingBuffer;
-                _z.NextOut = 0;
-                _z.AvailableBytesOut = _workingBuffer.Length;
-
                 ZlibCode rc = WantCompress
-                    ? _z.Deflate(
-                        _flushMode,
-                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                        out int consumed, out int written)
-                    : _z.Inflate(
-                        _flushMode,
-                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                        out consumed, out written);
+                    ? z.Deflate(_flushMode, input, output, out int consumed, out int written)
+                    : z.Inflate(_flushMode, input, output, out consumed, out written);
 
-                _z.NextIn += consumed;
-                _z.NextOut += written;
-                _z.AvailableBytesIn -= consumed;
-                _z.AvailableBytesOut -= written;
+                input = input.Slice(consumed);
                 _totalBytesOut += written;
 
                 if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
-                    throw new ZlibException((WantCompress ? "de" : "in") + "flating: " + _z.Message);
+                    throw new ZlibException((WantCompress ? "de" : "in") + "flating: " + z.Message);
 
-                //if (_workingBuffer.Length - _z.AvailableBytesOut > 0)
-                _stream.Write(_workingBuffer, 0, _workingBuffer.Length - _z.AvailableBytesOut);
-
-                done = _z.AvailableBytesIn == 0 && _z.AvailableBytesOut != 0;
+                if (written > 0)
+                    _stream.Write(output.Slice(0, written));
 
                 // If GZIP and de-compress, we're done when 8 bytes remain.
                 if (_flavor == ZlibStreamFlavor.GZIP && !WantCompress)
-                    done = _z.AvailableBytesIn == 8 && _z.AvailableBytesOut != 0;
+                    done = input.Length == 8 && output.Length - written != 0;
+                else
+                    done = input.Length == 0 && output.Length - written != 0;
 
             }
             while (!done);
         }
 
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Write(buffer.AsSpan(offset, count));
+        }
 
 
         private void Finish()
@@ -204,31 +193,20 @@ namespace Ionic.Zlib
             if (_z == null)
                 return;
 
+            Memory<byte> input = _leftover;
+
             if (_streamMode == StreamMode.Writer)
             {
+                Span<byte> output = WorkingBuffer.AsSpan();
+
                 bool done;
                 do
                 {
-                    _z.OutputBuffer = WorkingBuffer;
-                    _z.NextOut = 0;
-                    _z.AvailableBytesOut = _workingBuffer.Length;
-
                     ZlibCode rc = WantCompress
-                        ? _z.Deflate(
-                            FlushType.Finish,
-                            _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                            out int consumed, out int written)
-                        : _z.Inflate(
-                            FlushType.Finish,
-                            _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                            out consumed, out written);
+                        ? _z.Deflate(FlushType.Finish, input.Span, output, out int consumed, out int written)
+                        : _z.Inflate(FlushType.Finish, input.Span, output, out consumed, out written);
 
-                    _z.NextIn += consumed;
-                    _z.NextOut += written;
-                    _z.AvailableBytesIn -= consumed;
-                    _z.AvailableBytesOut -= written;
+                    input = input.Slice(consumed);
                     _totalBytesOut += written;
 
                     if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
@@ -240,15 +218,14 @@ namespace Ionic.Zlib
                             throw new ZlibException(verb + ": " + _z.Message);
                     }
 
-                    if (_workingBuffer.Length - _z.AvailableBytesOut > 0)
-                    {
-                        _stream.Write(_workingBuffer, 0, _workingBuffer.Length - _z.AvailableBytesOut);
-                    }
+                    if (written > 0)
+                        _stream.Write(output.Slice(0, written));
 
-                    done = _z.AvailableBytesIn == 0 && _z.AvailableBytesOut != 0;
                     // If GZIP and de-compress, we're done when 8 bytes remain.
                     if (_flavor == ZlibStreamFlavor.GZIP && !WantCompress)
-                        done = _z.AvailableBytesIn == 8 && _z.AvailableBytesOut != 0;
+                        done = input.Length == 8 && output.Length - written != 0;
+                    else
+                        done = input.Length == 0 && output.Length - written != 0;
 
                 }
                 while (!done);
@@ -261,10 +238,14 @@ namespace Ionic.Zlib
                     if (WantCompress)
                     {
                         // Emit the GZIP trailer: CRC32 and  size mod 2^32
+
+                        Span<byte> tmp = stackalloc byte[8];
                         int c1 = _crc.Crc32Result;
-                        _stream.Write(BitConverter.GetBytes(c1), 0, 4);
                         int c2 = (int)(_crc.TotalBytesRead & 0x00000000FFFFFFFF);
-                        _stream.Write(BitConverter.GetBytes(c2), 0, 4);
+
+                        BinaryPrimitives.WriteInt32LittleEndian(tmp, c1);
+                        BinaryPrimitives.WriteInt32LittleEndian(tmp.Slice(4), c2);
+                        _stream.Write(tmp);
                     }
                     else
                     {
@@ -286,42 +267,45 @@ namespace Ionic.Zlib
 
                         // Read and potentially verify the GZIP trailer:
                         // CRC32 and size mod 2^32
-                        byte[] trailer = new byte[8];
+                        Span<byte> trailer = stackalloc byte[8];
 
                         // workitems 8679 & 12554
-                        if (_z.AvailableBytesIn < 8)
+                        if (input.Length < 8)
                         {
                             // Make sure we have read to the end of the stream
-                            Array.Copy(_z.InputBuffer, _z.NextIn, trailer, 0, _z.AvailableBytesIn);
+                            input.Span.CopyTo(trailer);
 
-                            int bytesNeeded = 8 - _z.AvailableBytesIn;
-                            int bytesRead = _stream.Read(trailer, _z.AvailableBytesIn, bytesNeeded);
+                            int bytesNeeded = 8 - input.Length;
+                            int bytesRead = _stream.Read(trailer.Slice(input.Length, bytesNeeded));
                             if (bytesNeeded != bytesRead)
                             {
                                 throw new ZlibException(
-                                    string.Format("Missing or incomplete GZIP trailer. Expected 8 bytes, got {0}.",
-                                    _z.AvailableBytesIn + bytesRead));
+                                    string.Format(
+                                        "Missing or incomplete GZIP trailer. Expected 8 bytes, got {0}.",
+                                        input.Length + bytesRead));
                             }
                         }
                         else
                         {
-                            Array.Copy(_z.InputBuffer, _z.NextIn, trailer, 0, trailer.Length);
+                            input.Span.Slice(0, trailer.Length).CopyTo(trailer);
                         }
 
-                        int crc32_expected = BitConverter.ToInt32(trailer, 0);
+                        int crc32_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer);
                         int crc32_actual = _crc.Crc32Result;
-                        int isize_expected = BitConverter.ToInt32(trailer, 4);
+                        int isize_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer.Slice(4));
                         int isize_actual = (int)(_totalBytesOut & 0x00000000FFFFFFFF);
 
                         if (crc32_actual != crc32_expected)
                             throw new ZlibException(
-                                string.Format("Bad CRC32 in GZIP trailer. (actual({0:X8})!=expected({1:X8}))",
-                                crc32_actual, crc32_expected));
+                                string.Format(
+                                    "Bad CRC32 in GZIP trailer. (actual({0:X8})!=expected({1:X8}))",
+                                    crc32_actual, crc32_expected));
 
                         if (isize_actual != isize_expected)
                             throw new ZlibException(
-                                string.Format("Bad size in GZIP trailer. (actual({0})!=expected({1}))",
-                                isize_actual, isize_expected));
+                                string.Format(
+                                    "Bad size in GZIP trailer. (actual({0})!=expected({1}))",
+                                    isize_actual, isize_expected));
 
                     }
                     else
@@ -374,12 +358,12 @@ namespace Ionic.Zlib
 
         public override long Seek(long offset, SeekOrigin origin)
         {
-            throw new NotImplementedException();
-            //_outStream.Seek(offset, origin);
+            throw new NotSupportedException();
         }
+
         public override void SetLength(long value)
         {
-            _stream.SetLength(value);
+            throw new NotSupportedException();
         }
 
         public override int ReadByte()
@@ -395,26 +379,27 @@ namespace Ionic.Zlib
 
         private string ReadZeroTerminatedString()
         {
-            Span<byte> buf = stackalloc byte[1];
             var list = new System.Collections.Generic.List<byte>();
             bool done = false;
             do
             {
                 // workitem 7740
-                int n = _stream.Read(buf);
-                if (n != 1)
+                int n = _stream.ReadByte();
+                if (n == -1)
                 {
-                    throw new ZlibException("Unexpected EOF reading GZIP header.");
+                    throw new EndOfStreamException("Unexpected EOF reading GZIP header.");
                 }
                 else
                 {
-                    if (buf[0] == 0)
+                    if (n == 0)
                         done = true;
                     else
-                        list.Add(buf[0]);
+                        list.Add((byte)n);
                 }
-            } while (!done);
-            byte[] a = list.ToArray();
+            }
+            while (!done);
+
+            byte[] a = list.ToArray(); // TODO: NET5 use CollectionsMarshal.AsSpan(list)
             return GZipStream.iso8859dash1.GetString(a, 0, a.Length);
         }
 
@@ -423,8 +408,8 @@ namespace Ionic.Zlib
         {
             int totalBytesRead = 0;
             // read the header on the first read
-            byte[] header = new byte[10];
-            int n = _stream.Read(header, 0, header.Length);
+            Span<byte> header = stackalloc byte[10];
+            int n = _stream.Read(header);
 
             // workitem 8501: handle edge case (decompress empty stream)
             if (n == 0)
@@ -436,13 +421,13 @@ namespace Ionic.Zlib
             if (header[0] != 0x1F || header[1] != 0x8B || header[2] != 8)
                 throw new ZlibException("Bad GZIP header.");
 
-            int timet = BitConverter.ToInt32(header, 4);
+            int timet = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4));
             _GzipMtime = GZipStream._unixEpoch.AddSeconds(timet);
             totalBytesRead += n;
             if ((header[3] & 0x04) == 0x04)
             {
                 // read and discard extra field
-                n = _stream.Read(header, 0, 2); // 2-byte length field
+                n = _stream.Read(header.Slice(0, 2)); // 2-byte length field
                 totalBytesRead += n;
 
                 short extraLength = (short)(header[0] + header[1] * 256);
@@ -463,24 +448,16 @@ namespace Ionic.Zlib
         }
 
 
-
-        public override int Read(byte[] buffer, int offset, int count)
+        public override int Read(Span<byte> buffer)
         {
-            // According to MS documentation, any implementation of the IO.Stream.Read function must:
-            // (a) throw an exception if offset & count reference an invalid part of the buffer,
-            //     or if count < 0, or if buffer is null
-            // (b) return 0 only upon EOF, or if count = 0
-            // (c) if not EOF, then return at least 1 byte, up to <count> bytes
-
             if (_streamMode == StreamMode.Undefined)
             {
                 if (!_stream.CanRead)
                     throw new ZlibException("The stream is not readable.");
+
                 // for the first read, set up some controls.
                 _streamMode = StreamMode.Reader;
-                // (The first reference to _z goes through the private accessor which
-                // may initialize it.)
-                Z.AvailableBytesIn = 0;
+
                 if (_flavor == ZlibStreamFlavor.GZIP)
                 {
                     _gzipHeaderByteCount = ReadAndValidateGzipHeader();
@@ -492,41 +469,27 @@ namespace Ionic.Zlib
 
             if (_streamMode != StreamMode.Reader)
                 throw new ZlibException("Cannot Read after Writing.");
-
-            if (count == 0)
-                return 0;
             if (nomoreinput && WantCompress)
                 return 0;  // workitem 8557
-            if (buffer == null)
-                throw new ArgumentNullException(nameof(buffer));
-            if (count < 0)
-                throw new ArgumentOutOfRangeException(nameof(count));
-            if (offset < buffer.GetLowerBound(0))
-                throw new ArgumentOutOfRangeException(nameof(offset));
-            if ((offset + count) > buffer.GetLength(0))
-                throw new ArgumentOutOfRangeException(nameof(count));
-
-
-            // set up the output of the deflate/inflate codec:
-            _z.OutputBuffer = buffer;
-            _z.NextOut = offset;
-            _z.AvailableBytesOut = count;
-
-            // This is necessary in case _workingBuffer has been resized. (new byte[])
-            // (The first reference to _workingBuffer goes through the private accessor which
-            // may initialize it.)
-            _z.InputBuffer = WorkingBuffer;
+            
+            var z = Z;
+            Span<byte> output = buffer;
+            Memory<byte> input = _leftover;
 
             ZlibCode rc;
             do
             {
-                // need data in _workingBuffer in order to deflate/inflate.  Here, we check if we have any.
-                if ((_z.AvailableBytesIn == 0) && (!nomoreinput))
+                // need data in _workingBuffer in order to deflate/inflate. 
+                // Here, we check if we have any.
+                if (input.Length == 0 && !nomoreinput)
                 {
                     // No data available, so try to Read data from the captive stream.
-                    _z.NextIn = 0;
-                    _z.AvailableBytesIn = _stream.Read(_workingBuffer, 0, _workingBuffer.Length);
-                    if (_z.AvailableBytesIn == 0)
+
+                    var buf = WorkingBuffer;
+                    int n = _stream.Read(buf);
+                    input = buf.AsMemory(0, n);
+
+                    if (input.Length == 0)
                         nomoreinput = true;
 
                 }
@@ -534,21 +497,11 @@ namespace Ionic.Zlib
 
 
                 rc = WantCompress
-                    ? _z.Deflate(
-                        _flushMode,
-                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                        out int consumed, out int written)
-                    : _z.Inflate(
-                        _flushMode,
-                        _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                        _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                        out consumed, out written);
+                    ? z.Deflate(_flushMode, input.Span, output, out int consumed, out int written)
+                    : z.Inflate(_flushMode, input.Span, output, out consumed, out written);
 
-                _z.NextIn += consumed;
-                _z.NextOut += written;
-                _z.AvailableBytesIn -= consumed;
-                _z.AvailableBytesOut -= written;
+                input = input.Slice(consumed);
+                output = output.Slice(written);
                 _totalBytesOut += written;
 
                 if (nomoreinput && (rc == ZlibCode.BufError))
@@ -556,20 +509,20 @@ namespace Ionic.Zlib
 
                 if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
                     throw new ZlibException(string.Format(
-                        "{0}flating:  rc={1}  msg={2}", WantCompress ? "de" : "in", rc, _z.Message));
+                        "{0}flating:  rc={1}  msg={2}", WantCompress ? "de" : "in", rc, z.Message));
 
-                if ((nomoreinput || rc == ZlibCode.StreamEnd) && (_z.AvailableBytesOut == count))
+                if ((nomoreinput || rc == ZlibCode.StreamEnd) && (output.Length == buffer.Length))
                     break; // nothing more to read
             }
             //while (_z.AvailableBytesOut == count && rc == ZlibCode.Z_OK);
-            while (_z.AvailableBytesOut > 0 && !nomoreinput && rc == ZlibCode.Ok);
+            while (output.Length > 0 && !nomoreinput && rc == ZlibCode.Ok);
 
 
             // workitem 8557
             // is there more room in output?
-            if (_z.AvailableBytesOut > 0)
+            if (output.Length > 0)
             {
-                if (rc == ZlibCode.Ok && _z.AvailableBytesIn == 0)
+                if (rc == ZlibCode.Ok && input.Length == 0)
                 {
                     // deferred
                 }
@@ -582,30 +535,32 @@ namespace Ionic.Zlib
                     {
                         // no more input data available; therefore we flush to
                         // try to complete the read
-                        rc = _z.Deflate(
-                            FlushType.Finish,
-                            _z.InputBuffer.AsSpan(_z.NextIn, _z.AvailableBytesIn),
-                            _z.OutputBuffer.AsSpan(_z.NextOut, _z.AvailableBytesOut),
-                            out int consumed, out int written);
+                        rc = z.Deflate(
+                            FlushType.Finish, input.Span, output, out int consumed, out int written);
 
-                        _z.NextIn += consumed;
-                        _z.NextOut += written;
-                        _z.AvailableBytesIn -= consumed;
-                        _z.AvailableBytesOut -= written;
+                        input = input.Slice(consumed);
+                        output = output.Slice(written);
 
                         if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
-                            throw new ZlibException(string.Format("Deflating:  rc={0}  msg={1}", rc, _z.Message));
+                            throw new ZlibException(
+                                string.Format("Deflating:  rc={0}  msg={1}", rc, z.Message));
                     }
                 }
             }
 
+            _leftover = input;
 
-            int read = count - _z.AvailableBytesOut;
+            int read = buffer.Length - output.Length;
 
             // calculate CRC after reading
-            _crc?.SlurpBlock(buffer.AsSpan(offset, read));
+            _crc?.SlurpBlock(buffer.Slice(0, read));
 
             return read;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return Read(buffer.AsSpan(offset, count));
         }
 
 

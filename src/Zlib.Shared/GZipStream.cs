@@ -28,6 +28,7 @@
 
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 
 namespace Ionic.Zlib
@@ -189,10 +190,10 @@ namespace Ionic.Zlib
                 _FileName = value;
                 if (_FileName == null)
                     return;
-                
+
                 if (_FileName.IndexOf("/") != -1)
                     _FileName = _FileName.Replace("/", "\\");
-                
+
                 if (_FileName.EndsWith("\\"))
                     throw new Exception("Illegal filename");
 
@@ -869,7 +870,6 @@ namespace Ionic.Zlib
         internal static readonly DateTime _unixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         internal static readonly System.Text.Encoding iso8859dash1 = System.Text.Encoding.GetEncoding("iso-8859-1");
 
-
         private int EmitHeader()
         {
             byte[]? commentBytes = (Comment == null) ? null : iso8859dash1.GetBytes(Comment);
@@ -879,12 +879,15 @@ namespace Ionic.Zlib
             int fnLength = (filenameBytes == null) ? 0 : filenameBytes.Length + 1;
 
             int bufferLength = 10 + cbLength + fnLength;
-            byte[] header = new byte[bufferLength];
+            Span<byte> header = bufferLength <= 4096
+                ? stackalloc byte[bufferLength] : new byte[bufferLength];
+
             int i = 0;
             // ID
             header[i++] = 0x1F;
             header[i++] = 0x8B;
 
+            // TODO: flags enum
             // compression method
             header[i++] = 8;
             byte flag = 0;
@@ -901,13 +904,14 @@ namespace Ionic.Zlib
                 LastModified = DateTime.Now;
             TimeSpan delta = LastModified.Value - _unixEpoch;
             int timet = (int)delta.TotalSeconds;
-            Array.Copy(BitConverter.GetBytes(timet), 0, header, i, 4);
+            BinaryPrimitives.WriteInt32LittleEndian(header.Slice(i), timet);
             i += 4;
 
             // xflg
-            header[i++] = 0;    // this field is totally useless
+            header[i++] = 0;    // flags are unused
+
             // OS
-            header[i++] = 0xFF; // 0xFF == unspecified
+            header[i++] = 0xff; // 0xFF == unspecified
 
             // extra field length - only if FEXTRA is set, which it is not.
             //header[i++]= 0;
@@ -916,7 +920,7 @@ namespace Ionic.Zlib
             // filename
             if (filenameBytes != null && fnLength != 0)
             {
-                Array.Copy(filenameBytes, 0, header, i, fnLength - 1);
+                filenameBytes.AsSpan(0, fnLength - 1).CopyTo(header.Slice(i));
                 i += fnLength - 1;
                 header[i++] = 0; // terminate
             }
@@ -924,12 +928,12 @@ namespace Ionic.Zlib
             // comment
             if (commentBytes != null && cbLength != 0)
             {
-                Array.Copy(commentBytes, 0, header, i, cbLength - 1);
+                commentBytes.AsSpan(0, cbLength - 1).CopyTo(header.Slice(i));
                 i += cbLength - 1;
                 header[i++] = 0; // terminate
             }
 
-            _baseStream._stream.Write(header, 0, header.Length);
+            _baseStream._stream.Write(header);
 
             return header.Length; // bytes written
         }
