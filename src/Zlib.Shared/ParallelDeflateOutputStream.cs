@@ -31,10 +31,15 @@ using System.Threading;
 
 namespace Ionic.Zlib
 {
+    // TODO: turn this into a ParallelZlibWriteBaseStream and implement all flavors
+
     internal class WorkItem
     {
-        public byte[] buffer;
-        public byte[] compressed;
+        public byte[] inputBuffer;
+        public byte[] outputBuffer;
+
+        public Memory<byte> input;
+
         public int crc;
         public int index;
         public int ordinal;
@@ -48,15 +53,14 @@ namespace Ionic.Zlib
             CompressionStrategy strategy,
             int ix)
         {
-            buffer = new byte[size];
-            // alloc 5 bytes overhead for every block (margin of safety= 2)
+            inputBuffer = new byte[size];
+            // alloc 5 bytes overhead for every block (with margin of safety = 2)
             int n = size + ((size / 32768) + 1) * 5 * 2;
-            compressed = new byte[n];
+            outputBuffer = new byte[n];
+
             compressor = new ZlibCodec();
             compressor.Strategy = strategy;
             compressor.InitializeDeflate(compressLevel, false);
-            compressor.OutputBuffer = compressed;
-            compressor.InputBuffer = buffer;
             index = ix;
         }
     }
@@ -169,49 +173,6 @@ namespace Ionic.Zlib
         /// </para>
         ///
         /// </remarks>
-        ///
-        /// <example>
-        ///
-        /// This example shows how to use a ParallelDeflateOutputStream to compress
-        /// data.  It reads a file, compresses it, and writes the compressed data to
-        /// a second, output file.
-        ///
-        /// <code>
-        /// byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        /// int n= -1;
-        /// String outputFile = fileToCompress + ".compressed";
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(outputFile))
-        ///     {
-        ///         using (Stream compressor = new ParallelDeflateOutputStream(raw))
-        ///         {
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 compressor.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        /// <code lang="VB">
-        /// Dim buffer As Byte() = New Byte(4096) {}
-        /// Dim n As Integer = -1
-        /// Dim outputFile As String = (fileToCompress &amp; ".compressed")
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(outputFile)
-        ///         Using compressor As Stream = New ParallelDeflateOutputStream(raw)
-        ///             Do While (n &lt;&gt; 0)
-        ///                 If (n &gt; 0) Then
-        ///                     compressor.Write(buffer, 0, n)
-        ///                 End If
-        ///                 n = input.Read(buffer, 0, buffer.Length)
-        ///             Loop
-        ///         End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
         /// <param name="stream">The stream to which compressed data will be written.</param>
         public ParallelDeflateOutputStream(Stream stream)
             : this(stream, CompressionLevel.Default, CompressionStrategy.Default, false)
@@ -515,7 +476,8 @@ namespace Ionic.Zlib
         /// <param name="buffer">The buffer holding data to write to the stream.</param>
         /// <param name="offset">the offset within that data array to find the first byte to write.</param>
         /// <param name="count">the number of bytes to write.</param>
-        public override void Write(byte[] buffer, int offset, int count)
+
+        public override void Write(ReadOnlySpan<byte> buffer)
         {
             bool mustWait = false;
 
@@ -537,7 +499,7 @@ namespace Ionic.Zlib
                 throw pe;
             }
 
-            if (count == 0)
+            if (buffer.Length == 0)
                 return;
 
             if (!_firstWriteDone)
@@ -587,9 +549,9 @@ namespace Ionic.Zlib
 
                 WorkItem workitem = _pool[ix];
 
-                int limit = ((workitem.buffer.Length - workitem.inputBytesAvailable) > count)
-                    ? count
-                    : (workitem.buffer.Length - workitem.inputBytesAvailable);
+                int limit = ((workitem.inputBuffer.Length - workitem.inputBytesAvailable) > buffer.Length)
+                    ? buffer.Length
+                    : (workitem.inputBuffer.Length - workitem.inputBytesAvailable);
 
                 workitem.ordinal = _lastFilled;
 
@@ -602,21 +564,17 @@ namespace Ionic.Zlib
 
                 // copy from the provided buffer to our workitem, starting at
                 // the tail end of whatever data we might have in there currently.
-                Buffer.BlockCopy(buffer,
-                                 offset,
-                                 workitem.buffer,
-                                 workitem.inputBytesAvailable,
-                                 limit);
+                buffer.Slice(0, limit).CopyTo(workitem.inputBuffer.AsSpan(workitem.inputBytesAvailable));
 
-                count -= limit;
-                offset += limit;
+                buffer = buffer.Slice(limit);
                 workitem.inputBytesAvailable += limit;
-                if (workitem.inputBytesAvailable == workitem.buffer.Length)
+                workitem.input = workitem.inputBuffer.AsMemory(0, workitem.inputBytesAvailable);
+
+                if (workitem.inputBytesAvailable == workitem.inputBuffer.Length)
                 {
                     // No need for interlocked.increment: the Write()
                     // method is documented as not multi-thread safe, so
-                    // we can assume Write() calls come in from only one
-                    // thread.
+                    // we can assume Write() calls come in from only one thread.
                     TraceOutput(TraceBits.Write,
                                 "Write    QUWI     wi({0}) ord({1}) iba({2}) nf({3})",
                                 workitem.index,
@@ -631,15 +589,18 @@ namespace Ionic.Zlib
                 else
                     _currentlyFilling = ix;
 
-                if (count > 0)
-                    TraceOutput(TraceBits.WriteEnter, "Write    more");
+                if (buffer.Length > 0)
+                    TraceOutput(TraceBits.WriteEnter, "Write more");
             }
-            while (count > 0);  // until no more to write
+            while (buffer.Length > 0);  // until no more to write
 
-            TraceOutput(TraceBits.WriteEnter, "Write    exit");
-            return;
+            TraceOutput(TraceBits.WriteEnter, "Write exit");
         }
 
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Write(buffer.AsSpan(offset, count));
+        }
 
 
         private void FlushFinish()
@@ -647,40 +608,21 @@ namespace Ionic.Zlib
             // After writing a series of compressed buffers, each one closed
             // with Flush.Sync, we now write the final one as Flush.Finish,
             // and then stop.
-            byte[] buffer = new byte[128];
+            Span<byte> buffer = stackalloc byte[128];
             var compressor = new ZlibCodec();
             _ = compressor.InitializeDeflate(_compressLevel, false);
-            compressor.InputBuffer = null;
-            compressor.NextIn = 0;
-            compressor.AvailableBytesIn = 0;
-            compressor.OutputBuffer = buffer;
-            compressor.NextOut = 0;
-            compressor.AvailableBytesOut = buffer.Length;
-            
-            var rc = compressor.Deflate(
-                FlushType.Finish,
-                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
-                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
-                out int consumed, out int written);
 
-            compressor.NextIn += consumed;
-            compressor.NextOut += written;
-            compressor.AvailableBytesIn -= consumed;
-            compressor.AvailableBytesOut -= written;
-
+            var rc = compressor.Deflate(FlushType.Finish, default, buffer, out _, out int written);
             if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
                 throw new Exception("deflating: " + compressor.Message);
 
-            if (buffer.Length - compressor.AvailableBytesOut > 0)
+            if (written > 0)
             {
-                TraceOutput(TraceBits.EmitBegin,
-                            "Emit     begin    flush bytes({0})",
-                            buffer.Length - compressor.AvailableBytesOut);
+                TraceOutput(TraceBits.EmitBegin, "Emit begin flush bytes({0})", written);
 
-                _outStream.Write(buffer, 0, buffer.Length - compressor.AvailableBytesOut);
+                _outStream.Write(buffer.Slice(0, written));
 
-                TraceOutput(TraceBits.EmitDone,
-                            "Emit     done     flush");
+                TraceOutput(TraceBits.EmitDone, "Emit done flush");
             }
 
             compressor.EndDeflate();
@@ -782,36 +724,7 @@ namespace Ionic.Zlib
         ///   it, to use it again on another stream.
         /// </remarks>
         ///
-        /// <param name="stream">
-        ///   The new output stream for this era.
-        /// </param>
-        ///
-        /// <example>
-        /// <code>
-        /// ParallelDeflateOutputStream deflater = null;
-        /// foreach (var inputFile in listOfFiles)
-        /// {
-        ///     string outputFile = inputFile + ".compressed";
-        ///     using (System.IO.Stream input = System.IO.File.OpenRead(inputFile))
-        ///     {
-        ///         using (var outStream = System.IO.File.Create(outputFile))
-        ///         {
-        ///             if (deflater == null)
-        ///                 deflater = new ParallelDeflateOutputStream(outStream,
-        ///                                                            CompressionLevel.Best,
-        ///                                                            CompressionStrategy.Default,
-        ///                                                            true);
-        ///             deflater.Reset(outStream);
-        ///
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 deflater.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        /// </example>
+        /// <param name="stream">The new output stream for this era. </param>
         public void Reset(Stream stream)
         {
             TraceOutput(TraceBits.Session, "-------------------------------------------------------");
@@ -841,8 +754,6 @@ namespace Ionic.Zlib
         }
 
 
-
-
         private void EmitPendingBuffers(bool doAll, bool mustWait)
         {
             // When combining parallel deflation with a ZipSegmentedStream, it's
@@ -856,6 +767,7 @@ namespace Ionic.Zlib
             if (emitting)
                 return;
             emitting = true;
+
             if ((doAll && (_latestCompressed != _lastFilled)) || mustWait)
             {
                 _newlyCompressedBlob.WaitOne();
@@ -921,8 +833,10 @@ namespace Ionic.Zlib
                                         workitem.ordinal,
                                         workitem.compressedBytesAvailable);
 
-                            _outStream.Write(workitem.compressed, 0, workitem.compressedBytesAvailable);
+                            _outStream.Write(workitem.outputBuffer, 0, workitem.compressedBytesAvailable);
+
                             _runningCrc.Combine(workitem.crc, workitem.inputBytesAvailable);
+                            
                             BytesProcessed += workitem.inputBytesAvailable;
                             workitem.inputBytesAvailable = 0;
 
@@ -964,7 +878,7 @@ namespace Ionic.Zlib
                 var crc = new Crc.Crc32();
 
                 // calc CRC on the buffer
-                crc.SlurpBlock(workitem.buffer.AsSpan(0, workitem.inputBytesAvailable));
+                crc.SlurpBlock(workitem.input.Span);
 
                 // deflate it
                 var rc = DeflateOneSegment(workitem);
@@ -972,12 +886,12 @@ namespace Ionic.Zlib
 
                 // update status
                 workitem.crc = crc.Crc32Result;
+
                 TraceOutput(TraceBits.Compress,
                             "Compress          wi({0}) ord({1}) len({2})",
                             workitem.index,
                             workitem.ordinal,
-                            workitem.compressedBytesAvailable
-                            );
+                            workitem.compressedBytesAvailable);
 
                 lock (_latestLock)
                 {
@@ -1005,44 +919,30 @@ namespace Ionic.Zlib
         {
             ZlibCodec compressor = workitem.compressor;
             compressor.ResetDeflate();
-            compressor.NextIn = 0;
 
-            compressor.AvailableBytesIn = workitem.inputBytesAvailable;
+            ref var input = ref workitem.input;
+            var output = workitem.outputBuffer.AsSpan();
 
             int consumed;
             int written;
+            workitem.compressedBytesAvailable = 0;
 
             // step 1: deflate the buffer
-            compressor.NextOut = 0;
-            compressor.AvailableBytesOut = workitem.compressed.Length;
             do
             {
-                compressor.Deflate(
-                    FlushType.None,
-                    compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
-                    compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
-                    out consumed, out written);
+                compressor.Deflate(FlushType.None, input.Span, output, out consumed, out written);
 
-                compressor.NextIn += consumed;
-                compressor.NextOut += written;
-                compressor.AvailableBytesIn -= consumed;
-                compressor.AvailableBytesOut -= written;
+                input = input.Slice(consumed);
+                output = output.Slice(written);
+                workitem.compressedBytesAvailable += written;
             }
-            while (compressor.AvailableBytesIn > 0 || compressor.AvailableBytesOut == 0);
+            while (input.Length > 0 || output.Length == 0);
 
             // step 2: flush (sync)
-            var rc = compressor.Deflate(
-                FlushType.Sync,
-                compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
-                compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
-                out consumed, out written);
+            var rc = compressor.Deflate(FlushType.Sync, input.Span, output, out consumed, out written);
+            input = input.Slice(consumed);
+            workitem.compressedBytesAvailable += written;
 
-            compressor.NextIn += consumed;
-            compressor.NextOut += written;
-            compressor.AvailableBytesIn -= consumed;
-            compressor.AvailableBytesOut -= written;
-
-            workitem.compressedBytesAvailable = written;
             return rc;
         }
 
@@ -1140,51 +1040,32 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        /// This method always throws a NotSupportedException.
         /// </summary>
-        /// <param name="buffer">
-        ///   The buffer into which data would be read, IF THIS METHOD
-        ///   ACTUALLY DID ANYTHING.
-        /// </param>
-        /// <param name="offset">
-        ///   The offset within that data array at which to insert the
-        ///   data that is read, IF THIS METHOD ACTUALLY DID
-        ///   ANYTHING.
-        /// </param>
-        /// <param name="count">
-        ///   The number of bytes to write, IF THIS METHOD ACTUALLY DID
-        ///   ANYTHING.
-        /// </param>
-        /// <returns>nothing.</returns>
+        /// <exception cref="NotSupportedException"></exception>
+        public override int Read(Span<byte> buffer)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <summary>
+        /// </summary>
+        /// <exception cref="NotSupportedException"></exception>
         public override int Read(byte[] buffer, int offset, int count)
         {
             throw new NotSupportedException();
         }
 
         /// <summary>
-        /// This method always throws a NotSupportedException.
         /// </summary>
-        /// <param name="offset">
-        ///   The offset to seek to....
-        ///   IF THIS METHOD ACTUALLY DID ANYTHING.
-        /// </param>
-        /// <param name="origin">
-        ///   The reference specifying how to apply the offset....  IF
-        ///   THIS METHOD ACTUALLY DID ANYTHING.
-        /// </param>
-        /// <returns>nothing. It always throws.</returns>
+        /// <exception cref="NotSupportedException"></exception>
         public override long Seek(long offset, SeekOrigin origin)
         {
             throw new NotSupportedException();
         }
 
         /// <summary>
-        /// This method always throws a NotSupportedException.
         /// </summary>
-        /// <param name="value">
-        ///   The new value for the stream length....  IF
-        ///   THIS METHOD ACTUALLY DID ANYTHING.
-        /// </param>
+        /// <exception cref="NotSupportedException"></exception>
         public override void SetLength(long value)
         {
             throw new NotSupportedException();

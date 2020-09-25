@@ -65,10 +65,12 @@ namespace Ionic.Zlib.Tests
             int written;
 
             while (
-                compressorTotalBytesIn != TextToCompress.Length && 
+                compressorTotalBytesIn != TextToCompress.Length &&
                 compressorTotalBytesOut < bufferSize)
             {
-                compressor.AvailableBytesIn = compressor.AvailableBytesOut = 1; // force small buffers
+                // force small buffers
+                compressor.AvailableBytesIn = 1;
+                compressor.AvailableBytesOut = 1;
 
                 rc = compressor.Deflate(
                     FlushType.None,
@@ -121,7 +123,7 @@ namespace Ionic.Zlib.Tests
 
             rc = decompressor.InitializeInflate();
             Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at InitializeInflate() [{0}]", decompressor.Message));
-            
+
             int decompressorTotalBytesIn = 0;
             int decompressorTotalBytesOut = 0;
             while (
@@ -130,7 +132,7 @@ namespace Ionic.Zlib.Tests
             {
                 // force small buffers
                 decompressor.AvailableBytesIn = 1;
-                decompressor.AvailableBytesOut = 1; 
+                decompressor.AvailableBytesOut = 1;
 
                 rc = decompressor.Inflate(
                     FlushType.None,
@@ -152,7 +154,7 @@ namespace Ionic.Zlib.Tests
 
             rc = decompressor.EndInflate();
             Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
-            
+
             int j = 0;
             for (; j < decompressedBytes.Length; j++)
                 if (decompressedBytes[j] == 0)
@@ -347,7 +349,7 @@ namespace Ionic.Zlib.Tests
             Assert.AreEqual(ZlibCode.StreamEnd, rc, string.Format("at Deflate() [{0}]", compressor.Message));
 
             rc = compressor.EndDeflate();
-            bufferSize = (int)(compressorTotalBytesOut);
+            bufferSize = compressorTotalBytesOut;
 
             var decompressor = new ZlibCodec(CompressionMode.Decompress);
 
@@ -589,7 +591,7 @@ namespace Ionic.Zlib.Tests
             rc = decompressor.EndInflate();
             Assert.AreEqual(ZlibCode.Ok, rc, string.Format("at EndInflate() [{0}]", decompressor.Message));
 
-            Assert.AreEqual(4 * workBuffer.Length, (int)decompressorTotalBytesOut);
+            Assert.AreEqual(4 * workBuffer.Length, decompressorTotalBytesOut);
 
             TestContext.WriteLine("compressed length: {0}", compressorTotalBytesOut);
             TestContext.WriteLine("decompressed length (expected): {0}", 4 * workBuffer.Length);
@@ -1466,15 +1468,36 @@ namespace Ionic.Zlib.Tests
             }
         }
 
-
-
-
         [TestMethod]
-        public void ParallelDeflateStream()
+        public void ParallelDeflateStream_ReadLength()
         {
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
-            TestContext.WriteLine("{0}: Zlib_ParallelDeflateStream Start", sw.Elapsed);
+
+            int sz = (128 * 1024) * Rnd.Next(14, 28); // 128k = default buffer size;
+
+            using var s = new MemoryStream();
+            TestContext.WriteLine("{0}: Compressing data...", sw.Elapsed);
+            using (var compressor = new ParallelDeflateOutputStream(s, true))
+                compressor.Write(new byte[sz], 0, sz);
+
+            s.Position = 0;
+            TestContext.WriteLine("{0}: Trying to decompress...", sw.Elapsed);
+
+            using var decompressor = new DeflateStream(s, CompressionMode.Decompress, true);
+
+            int bread = decompressor.Read(new byte[sz], 0, sz);
+            Assert.AreEqual(sz, bread, "Size of decompressed bytes does not match size of input bytes");
+
+            TestContext.WriteLine("{0}: Done...", sw.Elapsed);
+        }
+
+
+        [TestMethod]
+        public void ParallelDeflateStream_CrcChecked()
+        {
+            var sw = new System.Diagnostics.Stopwatch();
+            sw.Start();
 
             int sz = 256 * 1024 + Rnd.Next(120000);
             string FileToCompress = Path.Combine(TestTmpDir, string.Format("Zlib_ParallelDeflateStream.{0}.txt", sz));
@@ -1487,6 +1510,8 @@ namespace Ionic.Zlib.Tests
             int crc1 = DoCrc(FileToCompress);
             TestContext.WriteLine("{0}: Original CRC: {1:X8}", sw.Elapsed, crc1);
 
+            int crc2 = 0;
+
             long originalLength;
             var ms1 = new MemoryStream();
             {
@@ -1494,18 +1519,24 @@ namespace Ionic.Zlib.Tests
                 {
                     originalLength = fs1.Length;
 
-                    using var compressor = new ParallelDeflateOutputStream(ms1, true);
-                    fs1.CopyTo(compressor);
+                    var compressor = new ParallelDeflateOutputStream(ms1, true);
+                    using (compressor)
+                        fs1.CopyTo(compressor);
+
+                    TestContext.WriteLine("{0}: CRC by Input: {1:X8}", sw.Elapsed, compressor.Crc32);
+                    crc2 = compressor.Crc32;
                 }
                 ms1.Seek(0, SeekOrigin.Begin);
             }
+            Assert.AreEqual(crc1, crc2, "Compressor reported invalid Crc32.");
 
             TestContext.WriteLine(
                 "{0}: Compressed {1} bytes into {2} bytes",
                 sw.Elapsed, originalLength, ms1.Length);
 
-            var crc = new Crc.Crc32();
             byte[] decompressedBytes = null;
+            int crc3 = 0;
+
             using (var ms2 = new MemoryStream())
             {
                 using (var decompressor = new DeflateStream(ms1, CompressionMode.Decompress, false))
@@ -1515,10 +1546,12 @@ namespace Ionic.Zlib.Tests
                 TestContext.WriteLine("{0}: Decompressed length: {1}", sw.Elapsed, ms2.Length);
 
                 ms2.Seek(0, SeekOrigin.Begin);
-                int crc2 = crc.GetCrc32(ms2);
+                var crc = new Crc.Crc32();
+                crc3 = crc.GetCrc32(ms2);
                 decompressedBytes = ms2.ToArray();
-                TestContext.WriteLine("{0}: Decompressed CRC: {1:X8}", sw.Elapsed, crc2);
+                TestContext.WriteLine("{0}: Decompressed CRC: {1:X8}", sw.Elapsed, crc3);
             }
+            Assert.AreEqual(crc1, crc3, "Decompressed yields invalid Crc32.");
 
             TestContext.WriteLine("{0}: Checking...", sw.Elapsed);
 
@@ -1542,35 +1575,6 @@ namespace Ionic.Zlib.Tests
             }
 
             Assert.IsTrue(check, "Data check failed");
-            TestContext.WriteLine("{0}: Done...", sw.Elapsed);
-        }
-
-        [TestMethod]
-        public void ParallelDeflateStream2()
-        {
-            var sw = new System.Diagnostics.Stopwatch();
-            sw.Start();
-            TestContext.WriteLine("{0}: Zlib_ParallelDeflateStream2 Start", sw.Elapsed);
-            int sz = (128 * 1024) * Rnd.Next(14, 28); // 128k = default buffer size;
-            using (var s = new MemoryStream())
-            {
-                TestContext.WriteLine("{0}: Creating zip...", sw.Elapsed);
-                using (var compressor = new ParallelDeflateOutputStream(s, true))
-                    compressor.Write(new byte[sz], 0, sz);
-
-                s.Position = 0;
-                TestContext.WriteLine("{0}: Trying to extract...", sw.Elapsed);
-                using var decompressor = new DeflateStream(s, CompressionMode.Decompress, true);
-                try
-                {
-                    int bread = decompressor.Read(new byte[sz], 0, sz);
-                    Assert.AreEqual(sz, bread, "Size of decompressed bytes does not match size of input bytes");
-                }
-                catch (ZlibException)
-                {
-                    Assert.Fail("ParallelDeflate failed");
-                }
-            }
             TestContext.WriteLine("{0}: Done...", sw.Elapsed);
         }
 

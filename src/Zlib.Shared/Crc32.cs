@@ -276,7 +276,7 @@ namespace Ionic.Crc
         }
 
 
-        private static uint Gf2_matrix_times(uint[] matrix, uint vec)
+        private static uint Gf2_matrix_times(Span<uint> matrix, uint vec)
         {
             uint sum = 0;
             int i = 0;
@@ -290,9 +290,9 @@ namespace Ionic.Crc
             return sum;
         }
 
-        private static void Gf2_matrix_square(uint[] square, uint[] mat)
+        private static void Gf2_matrix_square(Span<uint> square, Span<uint> mat)
         {
-            for (int i = 0; i < 32; i++)
+            for (int i = 0; i < square.Length; i++)
                 square[i] = Gf2_matrix_times(mat, mat[i]);
         }
 
@@ -311,8 +311,8 @@ namespace Ionic.Crc
         /// <param name="length">the length of data the CRC value was calculated on</param>
         public void Combine(int crc, int length)
         {
-            uint[] even = new uint[32];     // even-power-of-two zeros operator
-            uint[] odd = new uint[32];      // odd-power-of-two zeros operator
+            Span<uint> odd = stackalloc uint[32]; // odd-power-of-two zeros operator
+            Span<uint> even = stackalloc uint[32]; // even-power-of-two zeros operator
 
             if (length == 0)
                 return;
