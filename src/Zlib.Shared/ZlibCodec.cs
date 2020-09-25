@@ -156,7 +156,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// The Adler32 checksum on the data transferred through the codec so far. You probably don't need to look at this.
         /// </summary>
-        public int Adler32 { get { return (int)_adler32; } }
+        public int Adler32 => (int)_adler32;
 
         /// <summary>
         /// Create a ZlibCodec.

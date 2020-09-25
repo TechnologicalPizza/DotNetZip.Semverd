@@ -82,7 +82,7 @@ namespace Ionic.Zlib
     ///
     /// <seealso cref="DeflateStream" />
     /// <seealso cref="ZlibStream" />
-    public class GZipStream : Stream
+    public class GZipStream : ZlibBaseStream
     {
         // GZip format
         // source: http://tools.ietf.org/html/rfc1952
@@ -144,14 +144,10 @@ namespace Ionic.Zlib
         /// </remarks>
         public string? Comment
         {
-            get
-            {
-                return _Comment;
-            }
+            get => _Comment;
             set
             {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
+                AssertNotDisposed();
                 _Comment = value;
             }
         }
@@ -181,11 +177,10 @@ namespace Ionic.Zlib
         /// </remarks>
         public string? FileName
         {
-            get { return _FileName; }
+            get => _FileName;
             set
             {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
+                AssertNotDisposed();
 
                 _FileName = value;
                 if (_FileName == null)
@@ -217,17 +212,7 @@ namespace Ionic.Zlib
         /// </remarks>
         public DateTime? LastModified;
 
-        /// <summary>
-        /// The CRC on the GZIP stream.
-        /// </summary>
-        /// <remarks>
-        /// This is used for internal error checking. You probably don't need to look at this property.
-        /// </remarks>
-        public int Crc32 { get; private set; }
-
         private int _headerByteCount;
-        internal ZlibBaseStream _baseStream;
-        private bool _disposed;
         private bool _firstReadDone;
         private string? _FileName;
         private string? _Comment;
@@ -539,319 +524,32 @@ namespace Ionic.Zlib
         /// <param name="mode">Indicates whether the GZipStream will compress or decompress.</param>
         /// <param name="leaveOpen">true if the application would like the stream to remain open after inflation/deflation.</param>
         /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public GZipStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen)
+        public GZipStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
+            base(stream, mode, level, ZlibStreamFlavor.GZIP, leaveOpen)
         {
-            _baseStream = new ZlibBaseStream(stream, mode, level, ZlibStreamFlavor.GZIP, leaveOpen);
         }
-
-        #region Zlib properties
-
-        /// <summary>
-        /// This property sets the flush behavior on the stream.
-        /// </summary>
-        public virtual FlushType FlushMode
-        {
-            get { return _baseStream._flushMode; }
-            set
-            {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
-                _baseStream._flushMode = value;
-            }
-        }
-
-        /// <summary>
-        ///   The size of the working buffer for the compression codec.
-        /// </summary>
-        ///
-        /// <remarks>
-        /// <para>
-        ///   The working buffer is used for all stream operations.  The default size is
-        ///   1024 bytes.  The minimum size is 128 bytes. You may get better performance
-        ///   with a larger buffer.  Then again, you might not.  You would have to test
-        ///   it.
-        /// </para>
-        ///
-        /// <para>
-        ///   Set this before the first call to <c>Read()</c> or <c>Write()</c> on the
-        ///   stream. If you try to set it afterwards, it will throw.
-        /// </para>
-        /// </remarks>
-        public int BufferSize
-        {
-            get
-            {
-                return _baseStream._bufferSize;
-            }
-            set
-            {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
-                if (_baseStream._workingBuffer != null)
-                    throw new ZlibException("The working buffer is already set.");
-                if (value < ZlibConstants.WorkingBufferSizeMin)
-                    throw new ZlibException(string.Format("Don't be silly. {0} bytes?? Use a bigger buffer, at least {1}.", value, ZlibConstants.WorkingBufferSizeMin));
-                _baseStream._bufferSize = value;
-            }
-        }
-
-
-        /// <summary> Returns the total number of bytes input so far.</summary>
-        public virtual long TotalIn
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        /// <summary> Returns the total number of bytes output so far.</summary>
-        public virtual long TotalOut
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        #endregion
 
         #region Stream methods
 
-        /// <summary>
-        ///   Dispose the stream.
-        /// </summary>
-        /// <remarks>
-        ///   <para>
-        ///     This may or may not result in a <c>Close()</c> call on the captive
-        ///     stream.  See the constructors that have a <c>leaveOpen</c> parameter
-        ///     for more information.
-        ///   </para>
-        ///   <para>
-        ///     This method may be invoked in two distinct scenarios.  If disposing
-        ///     == true, the method has been called directly or indirectly by a
-        ///     user's code, for example via the public Dispose() method. In this
-        ///     case, both managed and unmanaged resources can be referenced and
-        ///     disposed.  If disposing == false, the method has been called by the
-        ///     runtime from inside the object finalizer and this method should not
-        ///     reference other objects; in that case only unmanaged resources must
-        ///     be referenced or disposed.
-        ///   </para>
-        /// </remarks>
-        /// <param name="disposing">
-        ///   indicates whether the Dispose method was invoked by user code.
-        /// </param>
-        protected override void Dispose(bool disposing)
+        public override int Read(Span<byte> buffer)
         {
-            try
-            {
-                if (!_disposed)
-                {
-                    if (disposing && (_baseStream != null))
-                    {
-                        _baseStream.Dispose();
-                        Crc32 = _baseStream.Crc32;
-                    }
-                    _disposed = true;
-                }
-            }
-            finally
-            {
-                base.Dispose(disposing);
-            }
-        }
-
-
-        /// <summary>
-        /// Indicates whether the stream can be read.
-        /// </summary>
-        /// <remarks>
-        /// The return value depends on whether the captive stream supports reading.
-        /// </remarks>
-        public override bool CanRead
-        {
-            get
-            {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
-                return _baseStream._stream.CanRead;
-            }
-        }
-
-        /// <summary>
-        /// Indicates whether the stream supports Seek operations.
-        /// </summary>
-        /// <remarks>
-        /// Always returns false.
-        /// </remarks>
-        public override bool CanSeek
-        {
-            get { return false; }
-        }
-
-
-        /// <summary>
-        /// Indicates whether the stream can be written.
-        /// </summary>
-        /// <remarks>
-        /// The return value depends on whether the captive stream supports writing.
-        /// </remarks>
-        public override bool CanWrite
-        {
-            get
-            {
-                if (_disposed)
-                    throw new ObjectDisposedException("GZipStream");
-                return _baseStream._stream.CanWrite;
-            }
-        }
-
-        /// <summary>
-        /// Flush the stream.
-        /// </summary>
-        public override void Flush()
-        {
-            if (_disposed)
-                throw new ObjectDisposedException("GZipStream");
-            _baseStream.Flush();
-        }
-
-        /// <summary>
-        /// Reading this property always throws a <see cref="NotSupportedException"/>.
-        /// </summary>
-        public override long Length
-        {
-            get { throw new NotSupportedException(); }
-        }
-
-        /// <summary>
-        ///   The position of the stream pointer.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   Setting this property always throws a <see cref="NotSupportedException"/>. 
-        ///   Reading will return the total bytes written out, if used in writing,
-        ///   or the total bytes read in, if used in reading. 
-        ///   The count may refer to compressed bytes or uncompressed bytes,
-        ///   depending on how you've used the stream.
-        /// </remarks>
-        public override long Position
-        {
-            get
-            {
-                throw new NotImplementedException();
-
-                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
-                //    return _baseStream._z.TotalBytesOut + _headerByteCount;
-                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
-                //    return _baseStream._z.TotalBytesIn + _baseStream._gzipHeaderByteCount;
-                return 0;
-            }
-
-            set { throw new NotSupportedException(); }
-        }
-
-        /// <summary>
-        ///   Read and decompress data from the source stream.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///   With a <c>GZipStream</c>, decompression is done through reading.
-        /// </remarks>
-        ///
-        /// <example>
-        /// <code>
-        /// byte[] working = new byte[WORKING_BUFFER_SIZE];
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(_CompressedFile))
-        /// {
-        ///     using (Stream decompressor= new Ionic.Zlib.GZipStream(input, CompressionMode.Decompress, true))
-        ///     {
-        ///         using (var output = System.IO.File.Create(_DecompressedFile))
-        ///         {
-        ///             int n;
-        ///             while ((n= decompressor.Read(working, 0, working.Length)) !=0)
-        ///             {
-        ///                 output.Write(working, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        /// </example>
-        /// <param name="buffer">The buffer into which the decompressed data should be placed.</param>
-        /// <param name="offset">the offset within that data array to put the first byte read.</param>
-        /// <param name="count">the number of bytes to read.</param>
-        /// <returns>the number of bytes actually read</returns>
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            if (_disposed)
-                throw new ObjectDisposedException("GZipStream");
-            int n = _baseStream.Read(buffer, offset, count);
-
-            // Console.WriteLine("GZipStream::Read(buffer, off({0}), c({1}) = {2}", offset, count, n);
-            // Console.WriteLine( Util.FormatByteArray(buffer, offset, n) );
+            int n = base.Read(buffer);
 
             if (!_firstReadDone)
             {
                 _firstReadDone = true;
-                FileName = _baseStream._GzipFileName;
-                Comment = _baseStream._GzipComment;
+                FileName = _GzipFileName;
+                Comment = _GzipComment;
             }
             return n;
         }
 
-
-
-        /// <summary>
-        ///   Calling this method always throws a <see cref="NotImplementedException"/>.
-        /// </summary>
-        /// <param name="offset">irrelevant; it will always throw!</param>
-        /// <param name="origin">irrelevant; it will always throw!</param>
-        /// <returns>irrelevant!</returns>
-        public override long Seek(long offset, SeekOrigin origin)
+        public override void Write(ReadOnlySpan<byte> buffer)
         {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        ///   Calling this method always throws a <see cref="NotImplementedException"/>.
-        /// </summary>
-        /// <param name="value">irrelevant; this method will always throw!</param>
-        public override void SetLength(long value)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        ///   Write data to the stream.
-        /// </summary>
-        ///
-        /// <remarks>
-        /// <para>
-        ///   If you wish to use the <c>GZipStream</c> to compress data while writing,
-        ///   you can create a <c>GZipStream</c> with <c>CompressionMode.Compress</c>, and a
-        ///   writable output stream.  Then call <c>Write()</c> on that <c>GZipStream</c>,
-        ///   providing uncompressed data as input.  The data sent to the output stream
-        ///   will be the compressed form of the data written.
-        /// </para>
-        ///
-        /// <para>
-        ///   A <c>GZipStream</c> can be used for <c>Read()</c> or <c>Write()</c>, but not
-        ///   both. Writing implies compression.  Reading implies decompression.
-        /// </para>
-        ///
-        /// </remarks>
-        /// <param name="buffer">The buffer holding data to write to the stream.</param>
-        /// <param name="offset">the offset within that data array to find the first byte to write.</param>
-        /// <param name="count">the number of bytes to write.</param>
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            if (_disposed)
-                throw new ObjectDisposedException("GZipStream");
-            if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Undefined)
+            if (StreamMode == ZlibStreamMode.Undefined)
             {
                 //Console.WriteLine("GZipStream: First write");
-                if (_baseStream.WantCompress)
+                if (IsCompressor)
                 {
                     // first write in compression, therefore, emit the GZIP header
                     _headerByteCount = EmitHeader();
@@ -862,7 +560,7 @@ namespace Ionic.Zlib
                 }
             }
 
-            _baseStream.Write(buffer, offset, count);
+            base.Write(buffer);
         }
         #endregion
 
@@ -933,7 +631,7 @@ namespace Ionic.Zlib
                 header[i++] = 0; // terminate
             }
 
-            _baseStream._stream.Write(header);
+            BaseStream.Write(header);
 
             return header.Length; // bytes written
         }

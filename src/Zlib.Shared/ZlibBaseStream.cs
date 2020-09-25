@@ -30,48 +30,51 @@ using System.IO;
 
 namespace Ionic.Zlib
 {
-    internal enum ZlibStreamFlavor
+    public enum ZlibStreamFlavor
     {
         ZLIB = 1950,
         DEFLATE = 1951,
         GZIP = 1952
     }
 
-    internal class ZlibBaseStream : Stream
+    public enum ZlibStreamMode
     {
-        internal enum StreamMode
-        {
-            Writer,
-            Reader,
-            Undefined,
-        }
+        Undefined,
+        Writer,
+        Reader
+    }
 
-        protected internal ZlibCodec _z;
+    public abstract class ZlibBaseStream : Stream
+    {
+        private ZlibCodec _z;
+        private FlushType _flushMode;
+        private ZlibStreamFlavor _flavor;
+        private CompressionMode _compressionMode;
+        private CompressionLevel _level;
+        private bool _leaveOpen;
+        private int _bufferSize = ZlibConstants.WorkingBufferSizeDefault;
 
-        protected internal StreamMode _streamMode = StreamMode.Undefined;
-        protected internal FlushType _flushMode;
-        protected internal ZlibStreamFlavor _flavor;
-        protected internal CompressionMode _compressionMode;
-        protected internal CompressionLevel _level;
-        protected internal bool _leaveOpen;
-        protected internal byte[] _workingBuffer;
+        private CompressionStrategy _strategy = CompressionStrategy.Default;
+        private byte[] _workingBuffer;
         private Memory<byte> _leftover;
-        protected internal int _bufferSize = ZlibConstants.WorkingBufferSizeDefault;
-
-        protected internal Stream _stream;
-        protected internal CompressionStrategy Strategy = CompressionStrategy.Default;
-
         private bool nomoreinput;
 
         // workitem 7159
         private Crc.Crc32 _crc;
-        protected internal string _GzipFileName;
-        protected internal string _GzipComment;
-        protected internal DateTime _GzipMtime;
-        protected internal int _gzipHeaderByteCount;
-        protected internal long _totalBytesOut;
+        protected string _GzipFileName;
+        protected string _GzipComment;
+        protected DateTime _GzipMtime;
+        protected int _gzipHeaderByteCount;
+        protected long _totalBytesOut;
 
-        internal int Crc32 { get { if (_crc == null) return 0; return _crc.Crc32Result; } }
+        public Stream BaseStream { get; }
+        public bool IsDisposed { get; private set; }
+        public ZlibStreamMode StreamMode { get; private set; }
+
+        protected bool IsCompressor => _compressionMode == CompressionMode.Compress;
+        protected bool IsDecompressor => _compressionMode == CompressionMode.Decompress;
+
+        public int Crc32 => _crc?.Crc32Result ?? 0;
 
         public ZlibBaseStream(
             Stream stream,
@@ -81,29 +84,143 @@ namespace Ionic.Zlib
             bool leaveOpen)
             : base()
         {
-            _flushMode = FlushType.None;
-            //this._workingBuffer = new byte[WORKING_BUFFER_SIZE_DEFAULT];
-            _stream = stream;
-            _leaveOpen = leaveOpen;
+            BaseStream = stream ?? throw new ArgumentNullException(nameof(stream));
             _compressionMode = compressionMode;
-            _flavor = flavor;
             _level = level;
+            _flavor = flavor;
+            _leaveOpen = leaveOpen;
+            _flushMode = FlushType.None;
 
             // workitem 7159
             if (flavor == ZlibStreamFlavor.GZIP)
-            {
                 _crc = new Crc.Crc32();
+        }
+
+        protected void AssertNotDisposed()
+        {
+            if (IsDisposed)
+                throw new ObjectDisposedException(GetType().FullName);
+        }
+
+
+        #region Zlib properties
+
+        /// <summary>
+        /// This property sets the flush behavior on the stream.
+        /// </summary>
+        public virtual FlushType FlushMode
+        {
+            get => _flushMode;
+            set
+            {
+                AssertNotDisposed();
+                _flushMode = value;
+            }
+        }
+
+        /// <summary>
+        ///   The size of the working buffer for the compression codec.
+        /// </summary>
+        ///
+        /// <remarks>
+        /// <para>
+        ///   The working buffer is used for all stream operations.  The default size is
+        ///   1024 bytes.  The minimum size is 128 bytes. You may get better performance
+        ///   with a larger buffer.  Then again, you might not.  You would have to test
+        ///   it.
+        /// </para>
+        ///
+        /// <para>
+        ///   Set this before the first call to <c>Read()</c> or <c>Write()</c> on the
+        ///   stream. If you try to set it afterwards, it will throw.
+        /// </para>
+        /// </remarks>
+        public int BufferSize
+        {
+            get => _bufferSize;
+            set
+            {
+                AssertNotDisposed();
+                if (_workingBuffer != null)
+                    throw new ZlibException("The working buffer is already set.");
+                if (value < ZlibConstants.WorkingBufferSizeMin)
+                    throw new ZlibException(string.Format(
+                        "Use a larger buffer size, at least {0}.", ZlibConstants.WorkingBufferSizeMin));
+                _bufferSize = value;
             }
         }
 
 
-        protected internal bool WantCompress
+        /// <summary>
+        /// Returns the total number of bytes input so far.
+        /// </summary>
+        public virtual long TotalIn => throw new NotImplementedException();
+
+        /// <summary>
+        /// Returns the total number of bytes output so far.
+        /// </summary>
+        public virtual long TotalOut => throw new NotImplementedException();
+
+        #endregion
+
+        #region Stream methods
+
+        /// <summary>
+        /// Indicates whether the stream can be read.
+        /// </summary>
+        /// <remarks>
+        /// The return value depends on whether the captive stream supports reading.
+        /// </remarks>
+        public override bool CanRead => IsDecompressor && BaseStream.CanRead;
+
+        /// <summary>
+        /// Indicates whether the stream supports Seek operations.
+        /// </summary>
+        /// <remarks>
+        /// Always returns false.
+        /// </remarks>
+        public override bool CanSeek => false;
+
+        /// <summary>
+        /// Indicates whether the stream can be written.
+        /// </summary>
+        /// <remarks>
+        /// The return value depends on whether the captive stream supports writing.
+        /// </remarks>
+        public override bool CanWrite => IsCompressor && BaseStream.CanWrite;
+
+        /// <summary>
+        /// Reading this property always throws a <see cref="NotSupportedException"/>.
+        /// </summary>
+        public override long Length => throw new NotSupportedException();
+
+        /// <summary>
+        ///   The position of the stream pointer.
+        /// </summary>
+        ///
+        /// <remarks>
+        ///   Setting this property always throws a <see cref="NotSupportedException"/>. 
+        ///   Reading will return the total bytes written out, if used in writing,
+        ///   or the total bytes read in, if used in reading. 
+        ///   The count may refer to compressed bytes or uncompressed bytes,
+        ///   depending on how you've used the stream.
+        /// </remarks>
+        public override long Position
         {
             get
             {
-                return _compressionMode == CompressionMode.Compress;
+                throw new NotImplementedException();
+
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Writer)
+                //    return _baseStream._z.TotalBytesOut + _headerByteCount;
+                //if (_baseStream._streamMode == ZlibBaseStream.StreamMode.Reader)
+                //    return _baseStream._z.TotalBytesIn + _baseStream._gzipHeaderByteCount;
+                return 0;
             }
+            set => throw new NotSupportedException();
         }
+
+        #endregion
 
         private ZlibCodec Z
         {
@@ -112,6 +229,7 @@ namespace Ionic.Zlib
                 if (_z == null)
                 {
                     bool wantRfc1950Header = _flavor == ZlibStreamFlavor.ZLIB;
+
                     _z = new ZlibCodec();
                     if (_compressionMode == CompressionMode.Decompress)
                     {
@@ -119,7 +237,7 @@ namespace Ionic.Zlib
                     }
                     else
                     {
-                        _z.Strategy = Strategy;
+                        _z.Strategy = _strategy;
                         _z.InitializeDeflate(_level, wantRfc1950Header);
                     }
                 }
@@ -141,9 +259,11 @@ namespace Ionic.Zlib
 
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            if (_streamMode == StreamMode.Undefined)
-                _streamMode = StreamMode.Writer;
-            else if (_streamMode != StreamMode.Writer)
+            AssertNotDisposed();
+
+            if (StreamMode == ZlibStreamMode.Undefined)
+                StreamMode = ZlibStreamMode.Writer;
+            else if (StreamMode != ZlibStreamMode.Writer)
                 throw new ZlibException("Cannot Write after Reading.");
 
             if (buffer.Length == 0)
@@ -159,7 +279,7 @@ namespace Ionic.Zlib
             bool done;
             do
             {
-                ZlibCode rc = WantCompress
+                ZlibCode rc = IsCompressor
                     ? z.Deflate(_flushMode, input, output, out int consumed, out int written)
                     : z.Inflate(_flushMode, input, output, out consumed, out written);
 
@@ -167,13 +287,13 @@ namespace Ionic.Zlib
                 _totalBytesOut += written;
 
                 if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
-                    throw new ZlibException((WantCompress ? "de" : "in") + "flating: " + z.Message);
+                    throw new ZlibException((IsCompressor ? "de" : "in") + "flating: " + z.Message);
 
                 if (written > 0)
-                    _stream.Write(output.Slice(0, written));
+                    BaseStream.Write(output.Slice(0, written));
 
                 // If GZIP and de-compress, we're done when 8 bytes remain.
-                if (_flavor == ZlibStreamFlavor.GZIP && !WantCompress)
+                if (_flavor == ZlibStreamFlavor.GZIP && !IsCompressor)
                     done = input.Length == 8 && output.Length - written != 0;
                 else
                     done = input.Length == 0 && output.Length - written != 0;
@@ -187,6 +307,15 @@ namespace Ionic.Zlib
             Write(buffer.AsSpan(offset, count));
         }
 
+        /// <summary>
+        /// Flush the stream.
+        /// </summary>
+        public override void Flush()
+        {
+            AssertNotDisposed();
+
+            BaseStream.Flush();
+        }
 
         private void Finish()
         {
@@ -195,14 +324,14 @@ namespace Ionic.Zlib
 
             Memory<byte> input = _leftover;
 
-            if (_streamMode == StreamMode.Writer)
+            if (StreamMode == ZlibStreamMode.Writer)
             {
                 Span<byte> output = WorkingBuffer.AsSpan();
 
                 bool done;
                 do
                 {
-                    ZlibCode rc = WantCompress
+                    ZlibCode rc = IsCompressor
                         ? _z.Deflate(FlushType.Finish, input.Span, output, out int consumed, out int written)
                         : _z.Inflate(FlushType.Finish, input.Span, output, out consumed, out written);
 
@@ -211,7 +340,7 @@ namespace Ionic.Zlib
 
                     if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
                     {
-                        string verb = (WantCompress ? "de" : "in") + "flating";
+                        string verb = (IsCompressor ? "de" : "in") + "flating";
                         if (_z.Message == null)
                             throw new ZlibException(string.Format("{0}: (rc = {1})", verb, rc));
                         else
@@ -219,10 +348,10 @@ namespace Ionic.Zlib
                     }
 
                     if (written > 0)
-                        _stream.Write(output.Slice(0, written));
+                        BaseStream.Write(output.Slice(0, written));
 
                     // If GZIP and de-compress, we're done when 8 bytes remain.
-                    if (_flavor == ZlibStreamFlavor.GZIP && !WantCompress)
+                    if (_flavor == ZlibStreamFlavor.GZIP && !IsCompressor)
                         done = input.Length == 8 && output.Length - written != 0;
                     else
                         done = input.Length == 0 && output.Length - written != 0;
@@ -230,12 +359,10 @@ namespace Ionic.Zlib
                 }
                 while (!done);
 
-                Flush();
-
                 // workitem 7159
                 if (_flavor == ZlibStreamFlavor.GZIP)
                 {
-                    if (WantCompress)
+                    if (IsCompressor)
                     {
                         // Emit the GZIP trailer: CRC32 and  size mod 2^32
 
@@ -245,7 +372,7 @@ namespace Ionic.Zlib
 
                         BinaryPrimitives.WriteInt32LittleEndian(tmp, c1);
                         BinaryPrimitives.WriteInt32LittleEndian(tmp.Slice(4), c2);
-                        _stream.Write(tmp);
+                        BaseStream.Write(tmp);
                     }
                     else
                     {
@@ -254,11 +381,11 @@ namespace Ionic.Zlib
                 }
             }
             // workitem 7159
-            else if (_streamMode == StreamMode.Reader)
+            else if (StreamMode == ZlibStreamMode.Reader)
             {
                 if (_flavor == ZlibStreamFlavor.GZIP)
                 {
-                    if (!WantCompress)
+                    if (!IsCompressor)
                     {
                         // workitem 8501: handle edge case (decompress empty stream)
                         if (_totalBytesOut == 0)
@@ -276,7 +403,7 @@ namespace Ionic.Zlib
                             input.Span.CopyTo(trailer);
 
                             int bytesNeeded = 8 - input.Length;
-                            int bytesRead = _stream.Read(trailer.Slice(input.Length, bytesNeeded));
+                            int bytesRead = BaseStream.Read(trailer.Slice(input.Length, bytesNeeded));
                             if (bytesNeeded != bytesRead)
                             {
                                 throw new ZlibException(
@@ -322,7 +449,7 @@ namespace Ionic.Zlib
             if (Z == null)
                 return;
 
-            if (WantCompress)
+            if (IsCompressor)
                 _z.EndDeflate();
             else
                 _z.EndInflate();
@@ -333,10 +460,11 @@ namespace Ionic.Zlib
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
+
             if (!disposing)
                 return;
 
-            if (_stream == null)
+            if (BaseStream == null)
                 return;
             try
             {
@@ -345,15 +473,10 @@ namespace Ionic.Zlib
             finally
             {
                 End();
-                if (!_leaveOpen)
-                    _stream.Dispose();
-                _stream = null!;
-            }
-        }
 
-        public override void Flush()
-        {
-            _stream.Flush();
+                if (!_leaveOpen)
+                    BaseStream.Dispose();
+            }
         }
 
         public override long Seek(long offset, SeekOrigin origin)
@@ -384,7 +507,7 @@ namespace Ionic.Zlib
             do
             {
                 // workitem 7740
-                int n = _stream.ReadByte();
+                int n = BaseStream.ReadByte();
                 if (n == -1)
                 {
                     throw new EndOfStreamException("Unexpected EOF reading GZIP header.");
@@ -409,7 +532,7 @@ namespace Ionic.Zlib
             int totalBytesRead = 0;
             // read the header on the first read
             Span<byte> header = stackalloc byte[10];
-            int n = _stream.Read(header);
+            int n = BaseStream.Read(header);
 
             // workitem 8501: handle edge case (decompress empty stream)
             if (n == 0)
@@ -427,12 +550,12 @@ namespace Ionic.Zlib
             if ((header[3] & 0x04) == 0x04)
             {
                 // read and discard extra field
-                n = _stream.Read(header.Slice(0, 2)); // 2-byte length field
+                n = BaseStream.Read(header.Slice(0, 2)); // 2-byte length field
                 totalBytesRead += n;
 
                 short extraLength = (short)(header[0] + header[1] * 256);
                 byte[] extra = new byte[extraLength];
-                n = _stream.Read(extra, 0, extra.Length);
+                n = BaseStream.Read(extra, 0, extra.Length);
                 if (n != extraLength)
                     throw new ZlibException("Unexpected end-of-file reading GZIP header.");
                 totalBytesRead += n;
@@ -450,13 +573,15 @@ namespace Ionic.Zlib
 
         public override int Read(Span<byte> buffer)
         {
-            if (_streamMode == StreamMode.Undefined)
+            AssertNotDisposed();
+
+            if (StreamMode == ZlibStreamMode.Undefined)
             {
-                if (!_stream.CanRead)
+                if (!BaseStream.CanRead)
                     throw new ZlibException("The stream is not readable.");
 
                 // for the first read, set up some controls.
-                _streamMode = StreamMode.Reader;
+                StreamMode = ZlibStreamMode.Reader;
 
                 if (_flavor == ZlibStreamFlavor.GZIP)
                 {
@@ -467,11 +592,11 @@ namespace Ionic.Zlib
                 }
             }
 
-            if (_streamMode != StreamMode.Reader)
+            if (StreamMode != ZlibStreamMode.Reader)
                 throw new ZlibException("Cannot Read after Writing.");
-            if (nomoreinput && WantCompress)
+            if (nomoreinput && IsCompressor)
                 return 0;  // workitem 8557
-            
+
             var z = Z;
             Span<byte> output = buffer;
             Memory<byte> input = _leftover;
@@ -486,7 +611,7 @@ namespace Ionic.Zlib
                     // No data available, so try to Read data from the captive stream.
 
                     var buf = WorkingBuffer;
-                    int n = _stream.Read(buf);
+                    int n = BaseStream.Read(buf);
                     input = buf.AsMemory(0, n);
 
                     if (input.Length == 0)
@@ -496,7 +621,7 @@ namespace Ionic.Zlib
                 // we have data in InputBuffer; now compress or decompress as appropriate
 
 
-                rc = WantCompress
+                rc = IsCompressor
                     ? z.Deflate(_flushMode, input.Span, output, out int consumed, out int written)
                     : z.Inflate(_flushMode, input.Span, output, out consumed, out written);
 
@@ -509,7 +634,7 @@ namespace Ionic.Zlib
 
                 if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
                     throw new ZlibException(string.Format(
-                        "{0}flating:  rc={1}  msg={2}", WantCompress ? "de" : "in", rc, z.Message));
+                        "{0}flating:  rc={1}  msg={2}", IsCompressor ? "de" : "in", rc, z.Message));
 
                 if ((nomoreinput || rc == ZlibCode.StreamEnd) && (output.Length == buffer.Length))
                     break; // nothing more to read
@@ -531,7 +656,7 @@ namespace Ionic.Zlib
                 if (nomoreinput)
                 {
                     // and in compression?
-                    if (WantCompress)
+                    if (IsCompressor)
                     {
                         // no more input data available; therefore we flush to
                         // try to complete the read
@@ -561,34 +686,6 @@ namespace Ionic.Zlib
         public override int Read(byte[] buffer, int offset, int count)
         {
             return Read(buffer.AsSpan(offset, count));
-        }
-
-
-
-        public override bool CanRead
-        {
-            get { return _stream.CanRead; }
-        }
-
-        public override bool CanSeek
-        {
-            get { return _stream.CanSeek; }
-        }
-
-        public override bool CanWrite
-        {
-            get { return _stream.CanWrite; }
-        }
-
-        public override long Length
-        {
-            get { return _stream.Length; }
-        }
-
-        public override long Position
-        {
-            get { throw new NotImplementedException(); }
-            set { throw new NotImplementedException(); }
         }
     }
 }

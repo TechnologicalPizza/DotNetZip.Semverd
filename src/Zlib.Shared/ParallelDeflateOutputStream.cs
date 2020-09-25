@@ -389,10 +389,7 @@ namespace Ionic.Zlib
         /// </remarks>
         public int MaxBufferPairs
         {
-            get
-            {
-                return _maxBufferPairs;
-            }
+            get => _maxBufferPairs;
             set
             {
                 if (value < 4)
@@ -443,7 +440,7 @@ namespace Ionic.Zlib
         /// </remarks>
         public int BufferSize
         {
-            get { return _bufferSize; }
+            get => _bufferSize;
             set
             {
                 if (value < 1024)
@@ -1102,10 +1099,7 @@ namespace Ionic.Zlib
         /// <remarks>
         /// Always returns false.
         /// </remarks>
-        public override bool CanSeek
-        {
-            get { return false; }
-        }
+        public override bool CanSeek => false;
 
 
         /// <summary>
@@ -1114,10 +1108,7 @@ namespace Ionic.Zlib
         /// <remarks>
         /// Always returns false.
         /// </remarks>
-        public override bool CanRead
-        {
-            get { return false; }
-        }
+        public override bool CanRead => false;
 
         /// <summary>
         /// Indicates whether the stream supports Write operations.
@@ -1125,18 +1116,12 @@ namespace Ionic.Zlib
         /// <remarks>
         /// Returns true if the provided stream is writable.
         /// </remarks>
-        public override bool CanWrite
-        {
-            get { return _outStream.CanWrite; }
-        }
+        public override bool CanWrite => _outStream.CanWrite;
 
         /// <summary>
         /// Reading this property always throws a NotSupportedException.
         /// </summary>
-        public override long Length
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public override long Length => throw new NotSupportedException();
 
         /// <summary>
         /// Returns the current position of the output stream.
@@ -1150,8 +1135,8 @@ namespace Ionic.Zlib
         /// </remarks>
         public override long Position
         {
-            get { return _outStream.Position; }
-            set { throw new NotSupportedException(); }
+            get => _outStream.Position;
+            set => throw new NotSupportedException();
         }
 
         /// <summary>
