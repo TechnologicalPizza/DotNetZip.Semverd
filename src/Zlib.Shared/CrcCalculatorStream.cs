@@ -1,21 +1,8 @@
-﻿// ------------------------------------------------------------------
-//
-// Copyright (c) 2011 Dino Chiesa.
-// All rights reserved.
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
+﻿// See the LICENSE file for license details.
 
 using System;
 
-namespace Ionic.Crc
+namespace Ionic
 {
     /// <summary>
     /// A Stream that calculates a CRC32 (a checksum) on all bytes read,
@@ -181,7 +168,7 @@ namespace Ionic.Crc
         ///     get an accurate CRC for the entire stream.
         ///   </para>
         /// </remarks>
-        public int Crc => _crc32.Crc32Result;
+        public int Crc => _crc32.Result;
 
         /// <summary>
         ///   Indicates whether the underlying stream will be left open when the
@@ -219,7 +206,7 @@ namespace Ionic.Crc
                     buffer = buffer.Slice(0, (int)bytesRemaining);
             }
             int n = _innerStream.Read(buffer);
-            _crc32.SlurpBlock(buffer.Slice(0, n));
+            _crc32.Slurp(buffer.Slice(0, n));
             return n;
         }
 
@@ -241,7 +228,7 @@ namespace Ionic.Crc
         /// <param name="buffer">the buffer from which to write</param>
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            _crc32.SlurpBlock(buffer);
+            _crc32.Slurp(buffer);
             _innerStream.Write(buffer);
         }
 

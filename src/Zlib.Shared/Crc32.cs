@@ -1,34 +1,8 @@
-// CRC32.cs
-// ------------------------------------------------------------------
-//
-// Copyright (c) 2011 Dino Chiesa.
-// All rights reserved.
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
-//
-// Last Saved: <2011-August-02 18:25:54>
-//
-// ------------------------------------------------------------------
-//
-// This module defines the CRC32 class, which can do the CRC32 algorithm, using
-// arbitrary starting polynomials, and bit reversal. The bit reversal is what
-// distinguishes this CRC-32 used in BZip2 from the CRC-32 that is used in PKZIP
-// files, or GZIP files. This class does both.
-//
-// ------------------------------------------------------------------
-
+// See the LICENSE file for license details.
 
 using System;
 
-namespace Ionic.Crc
+namespace Ionic
 {
     /// <summary>
     ///   Computes a CRC-32. The CRC-32 algorithm is parameterized - 
@@ -55,72 +29,75 @@ namespace Ionic.Crc
         /// <summary>
         /// Indicates the current CRC for all blocks slurped in.
         /// </summary>
-        public int Crc32Result => unchecked((int)~_register);
+        public int Result => unchecked((int)~_register);
 
         /// <summary>
-        /// Returns the CRC32 for the specified stream.
+        /// Update the value for the running CRC32 using the specified stream.
         /// </summary>
-        /// <param name="input">The stream over which to calculate the CRC32</param>
-        /// <returns>the CRC32 calculation</returns>
-        public int GetCrc32(System.IO.Stream input)
+        /// <param name="input">The stream over which to calculate the CRC32.</param>
+        public void Slurp(System.IO.Stream input)
         {
-            return GetCrc32AndCopy(input, null);
+            if (input == null)
+                throw new ArgumentNullException(nameof(input));
+
+            Span<byte> buffer = stackalloc byte[BUFFER_SIZE];
+            int count;
+            while ((count = input.Read(buffer)) > 0)
+            {
+                var buf = buffer.Slice(0, count);
+                Slurp(buf);
+            }
         }
 
         /// <summary>
-        /// Returns the CRC32 for the specified stream, and writes the input into the
-        /// output stream.
+        /// Update the value for the running CRC32 using the specified stream
+        /// and writes the input into the output stream.
         /// </summary>
-        /// <param name="input">The stream over which to calculate the CRC32</param>
-        /// <param name="output">The stream into which to deflate the input</param>
-        /// <returns>the CRC32 calculation</returns>
-        public int GetCrc32AndCopy(System.IO.Stream input, System.IO.Stream? output)
+        /// <param name="input">The stream over which to calculate the CRC32.</param>
+        /// <param name="output">The stream into which to write the input.</param>
+        public void Slurp(System.IO.Stream input, System.IO.Stream? output)
         {
-            if (input == null)
-                throw new Exception("The input stream must not be null.");
-
-            unchecked
+            if (output == null)
             {
-                Span<byte> buffer = stackalloc byte[BUFFER_SIZE];
-                TotalBytesRead = 0;
+                Slurp(input);
+                return;
+            }
+            if (input == null)
+                throw new ArgumentNullException(nameof(input));
 
-                int count;
-                while ((count = input.Read(buffer)) > 0)
-                {
-                    var buf = buffer.Slice(0, count);
-                    SlurpBlock(buf);
-                    output?.Write(buf);
-                    TotalBytesRead += count;
-                }
-
-                return (int)~_register;
+            Span<byte> buffer = stackalloc byte[BUFFER_SIZE];
+            int count;
+            while ((count = input.Read(buffer)) > 0)
+            {
+                var buf = buffer.Slice(0, count);
+                Slurp(buf);
+                output?.Write(buf);
             }
         }
 
 
         /// <summary>
-        ///   Get the CRC32 for the given (word,byte) combo.  This is a
-        ///   computation defined by PKzip for PKZIP 2.0 (weak) encryption.
+        ///   Get the CRC32 for the given (word,byte) combo.  
+        ///   This is a computation defined by PKzip for PKZIP 2.0 (weak) encryption.
         /// </summary>
         /// <param name="W">The word to start with.</param>
         /// <param name="B">The byte to combine it with.</param>
         /// <returns>The CRC-ized result.</returns>
-        public int ComputeCrc32(int W, byte B)
+        public int Compute(int W, byte B)
         {
-            return ComputeCrc32((uint)W, B);
+            return Compute((uint)W, B);
         }
 
-        internal int ComputeCrc32(uint W, byte B)
+        internal int Compute(uint W, byte B)
         {
             return (int)(crc32Table[(W ^ B) & 0xFF] ^ (W >> 8));
         }
 
         /// <summary>
         /// Update the value for the running CRC32 using the given block of bytes.
-        /// This is useful when using the CRC32() class in a Stream.
         /// </summary>
         /// <param name="block">block of bytes to slurp</param>
-        public void SlurpBlock(ReadOnlySpan<byte> block)
+        public void Slurp(ReadOnlySpan<byte> block)
         {
             // bzip algorithm
             for (int i = 0; i < block.Length; i++)
@@ -145,7 +122,7 @@ namespace Ionic.Crc
         ///   Process one byte in the CRC.
         /// </summary>
         /// <param name = "b">the byte to include into the CRC .  </param>
-        public void UpdateCRC(byte b)
+        public void Slurp(byte b)
         {
             if (reverseBits)
             {
@@ -173,25 +150,25 @@ namespace Ionic.Crc
         /// </remarks>
         /// <param name = "b">the byte to include into the CRC.  </param>
         /// <param name = "n">the number of times that byte should be repeated. </param>
-        public void UpdateCRC(byte b, int n)
+        public void Slurp(byte b, int n)
         {
-            while (n-- > 0)
+            if (reverseBits)
             {
-                if (reverseBits)
+                while (n-- > 0)
                 {
                     uint tmp = (_register >> 24) ^ b;
                     _register = (_register << 8) ^ crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
                 }
-                else
+            }
+            else
+            {
+                while (n-- > 0)
                 {
                     uint tmp = (_register & 0x000000FF) ^ b;
                     _register = (_register >> 8) ^ crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
-
                 }
             }
         }
-
-
 
         private static uint ReverseBits(uint data)
         {

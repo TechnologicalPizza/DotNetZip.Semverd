@@ -1,28 +1,4 @@
-//#define Trace
-
-// ParallelDeflateOutputStream.cs
-// ------------------------------------------------------------------
-//
-// A DeflateStream that does compression only, it uses a
-// divide-and-conquer approach with multiple threads to exploit multiple
-// CPUs for the DEFLATE computation.
-//
-// last saved: <2011-July-31 14:49:40>
-//
-// ------------------------------------------------------------------
-//
-// Copyright (c) 2009-2011 by Dino Chiesa
-// All rights reserved!
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
+// See the LICENSE file for license details.
 
 using System;
 using System.Collections.Generic;
@@ -123,7 +99,7 @@ namespace Ionic.Zlib
         private int _lastFilled;
         private int _lastWritten;
         private int _latestCompressed;
-        private Crc.Crc32 _runningCrc;
+        private Crc32 _runningCrc;
         private object _latestLock = new object();
         private Queue<int> _toWrite;
         private Queue<int> _toFill;
@@ -443,7 +419,7 @@ namespace Ionic.Zlib
             }
 
             _newlyCompressedBlob = new AutoResetEvent(false);
-            _runningCrc = new Crc.Crc32();
+            _runningCrc = new Crc32();
             _currentlyFilling = -1;
             _lastFilled = -1;
             _lastWritten = -1;
@@ -612,7 +588,7 @@ namespace Ionic.Zlib
             var compressor = new ZlibCodec();
             _ = compressor.InitializeDeflate(_compressLevel, false);
 
-            var rc = compressor.Deflate(FlushType.Finish, default, buffer, out _, out int written);
+            var rc = compressor.Deflate(ZlibFlushType.Finish, default, buffer, out _, out int written);
             if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
                 throw new Exception("deflating: " + compressor.Message);
 
@@ -627,7 +603,7 @@ namespace Ionic.Zlib
 
             compressor.EndDeflate();
 
-            Crc32 = _runningCrc.Crc32Result;
+            Crc32 = _runningCrc.Result;
         }
 
 
@@ -744,7 +720,7 @@ namespace Ionic.Zlib
 
             _firstWriteDone = false;
             BytesProcessed = 0L;
-            _runningCrc = new Crc.Crc32();
+            _runningCrc = new Crc32();
             _isClosed = false;
             _currentlyFilling = -1;
             _lastFilled = -1;
@@ -875,17 +851,17 @@ namespace Ionic.Zlib
             try
             {
                 int myItem = workitem.index;
-                var crc = new Crc.Crc32();
+                var crc = new Crc32();
 
                 // calc CRC on the buffer
-                crc.SlurpBlock(workitem.input.Span);
+                crc.Slurp(workitem.input.Span);
 
                 // deflate it
                 var rc = DeflateOneSegment(workitem);
                 // TODO: check deflate code
 
                 // update status
-                workitem.crc = crc.Crc32Result;
+                workitem.crc = crc.Result;
 
                 TraceOutput(TraceBits.Compress,
                             "Compress          wi({0}) ord({1}) len({2})",
@@ -930,7 +906,7 @@ namespace Ionic.Zlib
             // step 1: deflate the buffer
             do
             {
-                compressor.Deflate(FlushType.None, input.Span, output, out consumed, out written);
+                compressor.Deflate(ZlibFlushType.None, input.Span, output, out consumed, out written);
 
                 input = input.Slice(consumed);
                 output = output.Slice(written);
@@ -939,7 +915,7 @@ namespace Ionic.Zlib
             while (input.Length > 0 || output.Length == 0);
 
             // step 2: flush (sync)
-            var rc = compressor.Deflate(FlushType.Sync, input.Span, output, out consumed, out written);
+            var rc = compressor.Deflate(ZlibFlushType.Sync, input.Span, output, out consumed, out written);
             input = input.Slice(consumed);
             workitem.compressedBytesAvailable += written;
 

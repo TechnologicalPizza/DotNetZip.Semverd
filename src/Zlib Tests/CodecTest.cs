@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Text;
-using System.Xml;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Ionic.Zlib.Tests
@@ -73,7 +72,7 @@ namespace Ionic.Zlib.Tests
                 compressor.AvailableBytesOut = 1;
 
                 rc = compressor.Deflate(
-                    FlushType.None,
+                    ZlibFlushType.None,
                     compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                     compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                     out consumed, out written);
@@ -93,7 +92,7 @@ namespace Ionic.Zlib.Tests
                 compressor.AvailableBytesOut = 1;
 
                 rc = compressor.Deflate(
-                    FlushType.Finish,
+                    ZlibFlushType.Finish,
                     compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                     compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                     out consumed, out written);
@@ -135,7 +134,7 @@ namespace Ionic.Zlib.Tests
                 decompressor.AvailableBytesOut = 1;
 
                 rc = decompressor.Inflate(
-                    FlushType.None,
+                    ZlibFlushType.None,
                     decompressor.InputBuffer.AsSpan(decompressor.NextIn, decompressor.AvailableBytesIn),
                     decompressor.OutputBuffer.AsSpan(decompressor.NextOut, decompressor.AvailableBytesOut),
                     out consumed, out written);
@@ -213,7 +212,7 @@ namespace Ionic.Zlib.Tests
             compressor.AvailableBytesIn = BytesToCompress.Length;
 
             rc = compressor.Deflate(
-                FlushType.Finish,
+                ZlibFlushType.Finish,
                 compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                 compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                 out int consumed, out int written);
@@ -248,7 +247,7 @@ namespace Ionic.Zlib.Tests
             while (true)
             {
                 rc = decompressor.Inflate(
-                    FlushType.None,
+                    ZlibFlushType.None,
                     decompressor.InputBuffer.AsSpan(decompressor.NextIn, decompressor.AvailableBytesIn),
                     decompressor.OutputBuffer.AsSpan(decompressor.NextOut, decompressor.AvailableBytesOut),
                     out consumed, out written);
@@ -320,7 +319,7 @@ namespace Ionic.Zlib.Tests
             int compressorTotalBytesOut = 0;
 
             var rc = compressor.Deflate(
-                FlushType.Full,
+                ZlibFlushType.Full,
                 compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                 compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                 out int consumed, out int written);
@@ -335,7 +334,7 @@ namespace Ionic.Zlib.Tests
             compressor.AvailableBytesIn = TextToCompress.Length - lengthSkip;
 
             rc = compressor.Deflate(
-                FlushType.Finish,
+                ZlibFlushType.Finish,
                 compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                 compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                 out consumed, out written);
@@ -364,7 +363,7 @@ namespace Ionic.Zlib.Tests
             int decompressorTotalBytesOut = 0;
 
             rc = decompressor.Inflate(
-                FlushType.None,
+                ZlibFlushType.None,
                 decompressor.InputBuffer.AsSpan(decompressor.NextIn, decompressor.AvailableBytesIn),
                 decompressor.OutputBuffer.AsSpan(decompressor.NextOut, decompressor.AvailableBytesOut),
                 out consumed, out written);
@@ -387,7 +386,7 @@ namespace Ionic.Zlib.Tests
             try
             {
                 rc = decompressor.Inflate(
-                    FlushType.Finish,
+                    ZlibFlushType.Finish,
                     decompressor.InputBuffer.AsSpan(decompressor.NextIn, decompressor.AvailableBytesIn),
                     decompressor.OutputBuffer.AsSpan(decompressor.NextOut, decompressor.AvailableBytesOut),
                     out consumed, out written);
@@ -511,7 +510,7 @@ namespace Ionic.Zlib.Tests
                 compressor.AvailableBytesIn = workBuffer.Length;
 
                 rc = compressor.Deflate(
-                    FlushType.None,
+                    ZlibFlushType.None,
                     compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                     compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                     out consumed, out written);
@@ -533,7 +532,7 @@ namespace Ionic.Zlib.Tests
             }
 
             rc = compressor.Deflate(
-                FlushType.Finish,
+                ZlibFlushType.Finish,
                 compressor.InputBuffer.AsSpan(compressor.NextIn, compressor.AvailableBytesIn),
                 compressor.OutputBuffer.AsSpan(compressor.NextOut, compressor.AvailableBytesOut),
                 out consumed, out written);
@@ -568,7 +567,7 @@ namespace Ionic.Zlib.Tests
                 decompressor.NextOut = 0;
                 decompressor.AvailableBytesOut = workBuffer.Length;
 
-                rc = decompressor.Inflate(FlushType.None,
+                rc = decompressor.Inflate(ZlibFlushType.None,
                     decompressor.InputBuffer.AsSpan(decompressor.NextIn, decompressor.AvailableBytesIn),
                     decompressor.OutputBuffer.AsSpan(decompressor.NextOut, decompressor.AvailableBytesOut),
                     out consumed, out written);
@@ -696,9 +695,9 @@ namespace Ionic.Zlib.Tests
 
             for (int pass = 0; pass < 2; pass++)
             {
-                FlushType flush = (pass == 0)
-                    ? FlushType.None
-                    : FlushType.Finish;
+                ZlibFlushType flush = (pass == 0)
+                    ? ZlibFlushType.None
+                    : ZlibFlushType.Finish;
                 do
                 {
                     decompressor.NextOut = 0;
@@ -772,9 +771,9 @@ namespace Ionic.Zlib.Tests
 
             for (int pass = 0; pass < 2; pass++)
             {
-                FlushType flush = (pass == 0)
-                    ? FlushType.None
-                    : FlushType.Finish;
+                ZlibFlushType flush = (pass == 0)
+                    ? ZlibFlushType.None
+                    : ZlibFlushType.Finish;
                 do
                 {
                     compressor.NextOut = 0;
@@ -1535,23 +1534,20 @@ namespace Ionic.Zlib.Tests
                 sw.Elapsed, originalLength, ms1.Length);
 
             byte[] decompressedBytes = null;
-            int crc3 = 0;
+            var crc3 = new Crc32();
 
             using (var ms2 = new MemoryStream())
             {
                 using (var decompressor = new DeflateStream(ms1, CompressionMode.Decompress, false))
-                    decompressor.CopyTo(ms2);
+                    crc3.Slurp(decompressor, ms2);
 
                 TestContext.WriteLine("{0}: Decompressed", sw.Elapsed);
                 TestContext.WriteLine("{0}: Decompressed length: {1}", sw.Elapsed, ms2.Length);
 
-                ms2.Seek(0, SeekOrigin.Begin);
-                var crc = new Crc.Crc32();
-                crc3 = crc.GetCrc32(ms2);
                 decompressedBytes = ms2.ToArray();
                 TestContext.WriteLine("{0}: Decompressed CRC: {1:X8}", sw.Elapsed, crc3);
             }
-            Assert.AreEqual(crc1, crc3, "Decompressed yields invalid Crc32.");
+            Assert.AreEqual(crc1, crc3.Result, "Decompressed yields invalid Crc32.");
 
             TestContext.WriteLine("{0}: Checking...", sw.Elapsed);
 
@@ -1593,11 +1589,11 @@ namespace Ionic.Zlib.Tests
             var testAdler = new Action<int>(chunk =>
             {
                 var index = 0;
-                var adler = Adler.Adler32(0, default);
+                var adler = Adler32.Compute(0, default);
                 while (index < buffer.Length)
                 {
                     var length = Math.Min(buffer.Length - index, chunk);
-                    adler = Adler.Adler32(adler, buffer.AsSpan(index, length));
+                    adler = Adler32.Compute(adler, buffer.AsSpan(index, length));
                     index += chunk;
                 }
                 Assert.AreEqual(adler, goal);

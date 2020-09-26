@@ -1,28 +1,4 @@
-// ZlibBaseStream.cs
-// ------------------------------------------------------------------
-//
-// Copyright (c) 2009 Dino Chiesa and Microsoft Corporation.
-// All rights reserved.
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
-//
-// last saved (in emacs):
-// Time-stamp: <2011-August-06 21:22:38>
-//
-// ------------------------------------------------------------------
-//
-// This module defines the ZlibBaseStream class, which is an intnernal
-// base class for DeflateStream, ZlibStream and GZipStream.
-//
-// ------------------------------------------------------------------
+// See the LICENSE file for license details.
 
 using System;
 using System.Buffers.Binary;
@@ -47,7 +23,7 @@ namespace Ionic.Zlib
     public abstract class ZlibBaseStream : Stream
     {
         private ZlibCodec _z;
-        private FlushType _flushMode;
+        private ZlibFlushType _flushMode;
         private ZlibStreamFlavor _flavor;
         private CompressionMode _compressionMode;
         private CompressionLevel _level;
@@ -60,7 +36,7 @@ namespace Ionic.Zlib
         private bool nomoreinput;
 
         // workitem 7159
-        private Crc.Crc32 _crc;
+        private Crc32 _crc;
         protected string _GzipFileName;
         protected string _GzipComment;
         protected DateTime _GzipMtime;
@@ -74,7 +50,7 @@ namespace Ionic.Zlib
         protected bool IsCompressor => _compressionMode == CompressionMode.Compress;
         protected bool IsDecompressor => _compressionMode == CompressionMode.Decompress;
 
-        public int Crc32 => _crc?.Crc32Result ?? 0;
+        public int Crc32 => _crc?.Result ?? 0;
 
         public ZlibBaseStream(
             Stream stream,
@@ -89,11 +65,11 @@ namespace Ionic.Zlib
             _level = level;
             _flavor = flavor;
             _leaveOpen = leaveOpen;
-            _flushMode = FlushType.None;
+            _flushMode = ZlibFlushType.None;
 
             // workitem 7159
             if (flavor == ZlibStreamFlavor.GZIP)
-                _crc = new Crc.Crc32();
+                _crc = new Crc32();
         }
 
         protected void AssertNotDisposed()
@@ -108,7 +84,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// This property sets the flush behavior on the stream.
         /// </summary>
-        public virtual FlushType FlushMode
+        public virtual ZlibFlushType FlushMode
         {
             get => _flushMode;
             set
@@ -270,7 +246,7 @@ namespace Ionic.Zlib
                 return;
 
             // calculate the CRC on the uncompressed data
-            _crc?.SlurpBlock(buffer);
+            _crc?.Slurp(buffer);
 
             var z = Z;
             var input = buffer;
@@ -332,8 +308,8 @@ namespace Ionic.Zlib
                 do
                 {
                     ZlibCode rc = IsCompressor
-                        ? _z.Deflate(FlushType.Finish, input.Span, output, out int consumed, out int written)
-                        : _z.Inflate(FlushType.Finish, input.Span, output, out consumed, out written);
+                        ? _z.Deflate(ZlibFlushType.Finish, input.Span, output, out int consumed, out int written)
+                        : _z.Inflate(ZlibFlushType.Finish, input.Span, output, out consumed, out written);
 
                     input = input.Slice(consumed);
                     _totalBytesOut += written;
@@ -367,7 +343,7 @@ namespace Ionic.Zlib
                         // Emit the GZIP trailer: CRC32 and  size mod 2^32
 
                         Span<byte> tmp = stackalloc byte[8];
-                        int c1 = _crc.Crc32Result;
+                        int c1 = _crc.Result;
                         int c2 = (int)(_crc.TotalBytesRead & 0x00000000FFFFFFFF);
 
                         BinaryPrimitives.WriteInt32LittleEndian(tmp, c1);
@@ -418,7 +394,7 @@ namespace Ionic.Zlib
                         }
 
                         int crc32_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer);
-                        int crc32_actual = _crc.Crc32Result;
+                        int crc32_actual = _crc.Result;
                         int isize_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer.Slice(4));
                         int isize_actual = (int)(_totalBytesOut & 0x00000000FFFFFFFF);
 
@@ -494,10 +470,7 @@ namespace Ionic.Zlib
             Span<byte> buf = stackalloc byte[1];
             if (Read(buf) == 0)
                 return -1;
-
-            // calculate CRC after reading
-            _crc?.SlurpBlock(buf);
-            return buf[0] & 0xFF;
+            return buf[0];
         }
 
         private string ReadZeroTerminatedString()
@@ -661,7 +634,7 @@ namespace Ionic.Zlib
                         // no more input data available; therefore we flush to
                         // try to complete the read
                         rc = z.Deflate(
-                            FlushType.Finish, input.Span, output, out int consumed, out int written);
+                            ZlibFlushType.Finish, input.Span, output, out int consumed, out int written);
 
                         input = input.Slice(consumed);
                         output = output.Slice(written);
@@ -678,7 +651,7 @@ namespace Ionic.Zlib
             int read = buffer.Length - output.Length;
 
             // calculate CRC after reading
-            _crc?.SlurpBlock(buffer.Slice(0, read));
+            _crc?.Slurp(buffer.Slice(0, read));
 
             return read;
         }

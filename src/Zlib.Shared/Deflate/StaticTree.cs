@@ -1,4 +1,4 @@
-﻿// See the LICENSE file for the license details.
+﻿// See the LICENSE file for license details.
 
 namespace Ionic.Zlib
 {
@@ -72,15 +72,15 @@ namespace Ionic.Zlib
         {
             Literals = new StaticTree(
                 lengthAndLiteralsTreeCodes, DeflateTree.ExtraLengthBits,
-                InternalConstants.LITERALS + 1, InternalConstants.L_CODES, InternalConstants.MAX_BITS);
+                DeflateConstants.LITERALS + 1, DeflateConstants.L_CODES, DeflateConstants.MAX_BITS);
 
             Distances = new StaticTree(
                 distTreeCodes, DeflateTree.ExtraDistanceBits,
-                0, InternalConstants.D_CODES, InternalConstants.MAX_BITS);
+                0, DeflateConstants.D_CODES, DeflateConstants.MAX_BITS);
 
             BitLengths = new StaticTree(
                 null, DeflateTree.extra_blbits,
-                0, InternalConstants.BL_CODES, InternalConstants.MAX_BL_BITS);
+                0, DeflateConstants.BL_CODES, DeflateConstants.MAX_BL_BITS);
         }
     }
 }

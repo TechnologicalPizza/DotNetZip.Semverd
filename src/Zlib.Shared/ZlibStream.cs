@@ -1,31 +1,5 @@
-// ZlibStream.cs
-// ------------------------------------------------------------------
-//
-// Copyright (c) 2009 Dino Chiesa and Microsoft Corporation.
-// All rights reserved.
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
-//
-// last saved (in emacs):
-// Time-stamp: <2011-July-31 14:53:33>
-//
-// ------------------------------------------------------------------
-//
-// This module defines the ZlibStream class, which is similar in idea to
-// the System.IO.Compression.DeflateStream and
-// System.IO.Compression.GZipStream classes in the .NET BCL.
-//
-// ------------------------------------------------------------------
+// See the LICENSE file for license details.
 
-using System;
 using System.IO;
 
 namespace Ionic.Zlib

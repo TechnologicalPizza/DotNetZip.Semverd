@@ -1,31 +1,4 @@
-// DeflateStream.cs
-// ------------------------------------------------------------------
-//
-// Copyright (c) 2009-2010 Dino Chiesa.
-// All rights reserved.
-//
-// This code module is part of DotNetZip, a zipfile class library.
-//
-// ------------------------------------------------------------------
-//
-// This code is licensed under the Microsoft Public License.
-// See the file License.txt for the license details.
-// More info on: http://dotnetzip.codeplex.com
-//
-// ------------------------------------------------------------------
-//
-// last saved (in emacs):
-// Time-stamp: <2011-July-31 14:48:11>
-//
-// ------------------------------------------------------------------
-//
-// This module defines the DeflateStream class, which can be used as a replacement for
-// the System.IO.Compression.DeflateStream class in the .NET BCL.
-//
-// ------------------------------------------------------------------
-
-
-using System;
+// See the LICENSE file for license details.
 
 namespace Ionic.Zlib
 {
