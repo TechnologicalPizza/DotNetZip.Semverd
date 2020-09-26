@@ -124,8 +124,8 @@ namespace Ionic.Zlib
         /// </summary>
         public string? Message;
 
-        internal DeflateManager? dstate;
-        internal InflateManager? istate;
+        internal Deflater? dstate;
+        internal Inflater? istate;
 
         /// <summary>
         /// The compression level to use in this codec.  Useful only in compression mode.
@@ -267,7 +267,7 @@ namespace Ionic.Zlib
                 throw new ZlibException("You may not call InitializeInflate() after calling InitializeDeflate().");
 
             WindowBits = windowBits;
-            istate = new InflateManager(expectRfc1950Header);
+            istate = new Inflater(expectRfc1950Header);
             return istate.Initialize(this, windowBits);
         }
 
@@ -495,7 +495,7 @@ namespace Ionic.Zlib
         {
             if (istate != null)
                 throw new ZlibException("You may not call InitializeDeflate() after calling InitializeInflate().");
-            dstate = new DeflateManager();
+            dstate = new Deflater();
             dstate.WantRfc1950HeaderBytes = wantRfc1950Header;
 
             return dstate.Initialize(this, CompressLevel, WindowBits, Strategy);

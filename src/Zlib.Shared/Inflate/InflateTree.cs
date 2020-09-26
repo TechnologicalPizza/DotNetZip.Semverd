@@ -63,7 +63,7 @@ using System;
 
 namespace Ionic.Zlib
 {
-    internal sealed class InfTree
+    internal sealed class InflateTree
     {
         private const int MANY = 1440;
 

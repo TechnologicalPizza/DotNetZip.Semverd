@@ -62,7 +62,7 @@
 
 namespace Ionic.Zlib
 {
-    internal sealed class Tree
+    internal sealed class DeflateTree
     {
         private const int HEAP_SIZE = 2 * InternalConstants.L_CODES + 1;
 
@@ -191,7 +191,7 @@ namespace Ionic.Zlib
         //     array bl_count contains the frequencies for each bit length.
         //     The length opt_len is updated; static_len is also updated if stree is
         //     not null.
-        internal void gen_bitlen(DeflateManager s)
+        internal void gen_bitlen(Deflater s)
         {
             short[] tree = dyn_tree;
             short[] stree = staticTree.treeCodes;
@@ -279,7 +279,7 @@ namespace Ionic.Zlib
         // OUT assertions: the fields len and code are set to the optimal bit length
         //     and corresponding code. The length opt_len is updated; static_len is
         //     also updated if stree is not null. The field max_code is set.
-        internal void build_tree(DeflateManager s)
+        internal void build_tree(Deflater s)
         {
             short[] tree = dyn_tree;
             short[] stree = staticTree.treeCodes;
