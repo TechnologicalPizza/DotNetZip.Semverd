@@ -586,11 +586,13 @@ namespace Ionic.Zlib
             // and then stop.
             Span<byte> buffer = stackalloc byte[128];
             var compressor = new ZlibCodec();
-            _ = compressor.InitializeDeflate(_compressLevel, false);
+            compressor.InitializeDeflate(_compressLevel, false);
 
-            var rc = compressor.Deflate(ZlibFlushType.Finish, default, buffer, out _, out int written);
-            if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
-                throw new Exception("deflating: " + compressor.Message);
+            var (code, message) = compressor.Deflate(
+                ZlibFlushType.Finish, default, buffer, out _, out int written);
+
+            if (code != ZlibCode.StreamEnd && code != ZlibCode.Ok)
+                throw new Exception("deflating: " + message);
 
             if (written > 0)
             {
@@ -812,7 +814,7 @@ namespace Ionic.Zlib
                             _outStream.Write(workitem.outputBuffer, 0, workitem.compressedBytesAvailable);
 
                             _runningCrc.Combine(workitem.crc, workitem.inputBytesAvailable);
-                            
+
                             BytesProcessed += workitem.inputBytesAvailable;
                             workitem.inputBytesAvailable = 0;
 
@@ -857,8 +859,7 @@ namespace Ionic.Zlib
                 crc.Slurp(workitem.input.Span);
 
                 // deflate it
-                var rc = DeflateOneSegment(workitem);
-                // TODO: check deflate code
+                DeflateOneSegment(workitem);
 
                 // update status
                 workitem.crc = crc.Result;
@@ -891,13 +892,16 @@ namespace Ionic.Zlib
             }
         }
 
-        private static ZlibCode DeflateOneSegment(WorkItem workitem)
+        private static void DeflateOneSegment(WorkItem workitem)
         {
             ZlibCodec compressor = workitem.compressor;
             compressor.ResetDeflate();
 
             ref var input = ref workitem.input;
             var output = workitem.outputBuffer.AsSpan();
+
+            ZlibCode code;
+            string? message;
 
             int consumed;
             int written;
@@ -906,7 +910,11 @@ namespace Ionic.Zlib
             // step 1: deflate the buffer
             do
             {
-                compressor.Deflate(ZlibFlushType.None, input.Span, output, out consumed, out written);
+                (code, message) = compressor.Deflate(
+                    ZlibFlushType.None, input.Span, output, out consumed, out written);
+
+                if (code != ZlibCode.StreamEnd && code != ZlibCode.Ok)
+                    throw new Exception("deflating: " + message);
 
                 input = input.Slice(consumed);
                 output = output.Slice(written);
@@ -915,11 +923,14 @@ namespace Ionic.Zlib
             while (input.Length > 0 || output.Length == 0);
 
             // step 2: flush (sync)
-            var rc = compressor.Deflate(ZlibFlushType.Sync, input.Span, output, out consumed, out written);
+            (code, message) = compressor.Deflate(
+                ZlibFlushType.Sync, input.Span, output, out consumed, out written);
+
+            if (code != ZlibCode.StreamEnd && code != ZlibCode.Ok)
+                throw new Exception("deflating: " + message);
+
             input = input.Slice(consumed);
             workitem.compressedBytesAvailable += written;
-
-            return rc;
         }
 
 

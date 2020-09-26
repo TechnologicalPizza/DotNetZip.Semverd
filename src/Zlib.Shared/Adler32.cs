@@ -25,18 +25,18 @@ namespace Ionic
         /// <summary>
         ///   Calculates a Adler32 checksum.
         /// </summary>
-        public static uint Compute(uint baseSum, ReadOnlySpan<byte> buf)
+        public static uint Compute(uint baseSum, ReadOnlySpan<byte> data)
         {
-            if (buf == null)
-                return 1;
+            if (data.IsEmpty)
+                return baseSum;
 
             uint s1 = baseSum & 0xffff;
             uint s2 = (baseSum >> 16) & 0xffff;
 
-            while (buf.Length > 0)
+            while (data.Length > 0)
             {
-                var k = buf.Slice(0, Math.Min(NMAX, buf.Length));
-                buf = buf.Slice(k.Length);
+                var k = data.Slice(0, Math.Min(NMAX, data.Length));
+                data = data.Slice(k.Length);
 
                 while (k.Length >= 16)
                 {

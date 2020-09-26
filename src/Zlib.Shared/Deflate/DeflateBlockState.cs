@@ -2,11 +2,26 @@
 
 namespace Ionic.Zlib
 {
-    internal enum DeflateBlockState
+    public enum DeflateBlockState
     {
-        NeedMore = 0,       // block not completed, need more input or more output
-        BlockDone,          // block flush performed
-        FinishStarted,      // finish started, need only more output at next deflate
-        FinishDone          // finish done, accept no more input or output
+        /// <summary>
+        /// Block not completed, need more input or more output.
+        /// </summary>
+        NeedMore = 0,
+
+        /// <summary>
+        /// Block flush performed.
+        /// </summary>
+        BlockDone,
+
+        /// <summary>
+        /// Finish started, need only more output at next deflate.
+        /// </summary>
+        FinishStarted,
+
+        /// <summary>
+        /// Finish done, accept no more input or output.
+        /// </summary>
+        FinishDone
     }
 }

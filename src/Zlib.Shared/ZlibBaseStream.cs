@@ -244,15 +244,15 @@ namespace Ionic.Zlib
             bool done;
             do
             {
-                ZlibCode rc = IsCompressor
+                var (code, message) = IsCompressor
                     ? z.Deflate(_flushMode, input, output, out int consumed, out int written)
                     : z.Inflate(_flushMode, input, output, out consumed, out written);
 
                 input = input.Slice(consumed);
                 _totalBytesOut += written;
 
-                if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
-                    throw new ZlibException((IsCompressor ? "de" : "in") + "flating: " + z.Message);
+                if (code != ZlibCode.Ok && code != ZlibCode.StreamEnd)
+                    throw new ZlibException((IsCompressor ? "de" : "in") + "flating: " + message);
 
                 if (written > 0)
                     BaseStream.Write(output.Slice(0, written));
@@ -296,20 +296,20 @@ namespace Ionic.Zlib
                 bool done;
                 do
                 {
-                    ZlibCode rc = IsCompressor
+                    var (code, message) = IsCompressor
                         ? _z.Deflate(ZlibFlushType.Finish, input.Span, output, out int consumed, out int written)
                         : _z.Inflate(ZlibFlushType.Finish, input.Span, output, out consumed, out written);
 
                     input = input.Slice(consumed);
                     _totalBytesOut += written;
 
-                    if (rc != ZlibCode.StreamEnd && rc != ZlibCode.Ok)
+                    if (code != ZlibCode.StreamEnd && code != ZlibCode.Ok)
                     {
                         string verb = (IsCompressor ? "de" : "in") + "flating";
-                        if (_z.Message == null)
-                            throw new ZlibException(string.Format("{0}: (rc = {1})", verb, rc));
+                        if (message == null)
+                            throw new ZlibException(string.Format("{0}: (rc = {1})", verb, code));
                         else
-                            throw new ZlibException(verb + ": " + _z.Message);
+                            throw new ZlibException(verb + ": " + message);
                     }
 
                     if (written > 0)
@@ -563,7 +563,8 @@ namespace Ionic.Zlib
             Span<byte> output = buffer;
             Memory<byte> input = _leftover;
 
-            ZlibCode rc;
+            ZlibCode code;
+            string? message;
             do
             {
                 // need data in _workingBuffer in order to deflate/inflate. 
@@ -583,7 +584,7 @@ namespace Ionic.Zlib
                 // we have data in InputBuffer; now compress or decompress as appropriate
 
 
-                rc = IsCompressor
+                (code, message) = IsCompressor
                     ? z.Deflate(_flushMode, input.Span, output, out int consumed, out int written)
                     : z.Inflate(_flushMode, input.Span, output, out consumed, out written);
 
@@ -591,28 +592,28 @@ namespace Ionic.Zlib
                 output = output.Slice(written);
                 _totalBytesOut += written;
 
-                if (nomoreinput && (rc == ZlibCode.BufError))
+                if (nomoreinput && (code == ZlibCode.BufError))
                     return 0;
 
-                if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
+                if (code != ZlibCode.Ok && code != ZlibCode.StreamEnd)
                     throw new ZlibException(string.Format(
-                        "{0}flating:  rc={1}  msg={2}", IsCompressor ? "de" : "in", rc, z.Message));
+                        "{0}flating:  rc={1}  msg={2}", IsCompressor ? "de" : "in", code, message));
 
-                if ((nomoreinput || rc == ZlibCode.StreamEnd) && (output.Length == buffer.Length))
+                if ((nomoreinput || code == ZlibCode.StreamEnd) && (output.Length == buffer.Length))
                     break; // nothing more to read
             }
             //while (_z.AvailableBytesOut == count && rc == ZlibCode.Z_OK);
-            while (output.Length > 0 && !nomoreinput && rc == ZlibCode.Ok);
+            while (output.Length > 0 && !nomoreinput && code == ZlibCode.Ok);
 
 
             // workitem 8557
             // is there more room in output?
             if (output.Length > 0)
             {
-                if (rc == ZlibCode.Ok && input.Length == 0)
-                {
-                    // deferred
-                }
+                //if (code == ZlibCode.Ok && input.Length == 0)
+                //{
+                //    // deferred
+                //}
 
                 // are we completely done reading?
                 if (nomoreinput)
@@ -622,15 +623,15 @@ namespace Ionic.Zlib
                     {
                         // no more input data available; therefore we flush to
                         // try to complete the read
-                        rc = z.Deflate(
+                        (code, message) = z.Deflate(
                             ZlibFlushType.Finish, input.Span, output, out int consumed, out int written);
 
                         input = input.Slice(consumed);
                         output = output.Slice(written);
 
-                        if (rc != ZlibCode.Ok && rc != ZlibCode.StreamEnd)
+                        if (code != ZlibCode.Ok && code != ZlibCode.StreamEnd)
                             throw new ZlibException(
-                                string.Format("Deflating:  rc={0}  msg={1}", rc, z.Message));
+                                string.Format("Deflating:  rc={0}  msg={1}", code, message));
                     }
                 }
             }

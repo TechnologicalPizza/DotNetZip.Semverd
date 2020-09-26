@@ -16,6 +16,8 @@ namespace Ionic.Zlib
         /// The default number of window bits for the Deflate algorithm.
         /// </summary>
         public const int DefaultWindowBits = MaxWindowBits;
+
+        public const uint InitialAdler32 = 1;
     }
 }
 

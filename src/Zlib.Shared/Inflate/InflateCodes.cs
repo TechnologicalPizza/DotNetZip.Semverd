@@ -61,9 +61,9 @@ namespace Ionic.Zlib
         internal ZlibCode Process(
             InflateBlocks blocks, ZlibCode r,
             ReadOnlySpan<byte> input, ref Span<byte> output,
-            ref int consumed, ref int length, ref int written)
+            ref int consumed, ref int length, ref int written,
+            out string? message)
         {
-            ZlibCodec z = blocks._codec;
             byte[] window = blocks._window;
             int windowLength = window.Length;
 
@@ -79,10 +79,9 @@ namespace Ionic.Zlib
             int m = blocks.GetBytesToEnd(); // bytes to end of window or read pointer
             int[] inflateMask = InflateConstants.InflateMask;
 
-            int j;      // temporary storage
-            int tindex; // temporary pointer
             int e;      // extra bits or operation
             int f;      // pointer to copy strings from
+            message = null;
 
             // process input and output based on current state
             while (true)
@@ -90,12 +89,13 @@ namespace Ionic.Zlib
                 switch (mode)
                 {
                     // waiting for "i:"=input, "o:"=output, "x:"=nothing
-                    case START:  // x: set up for LEN
+                    case START: // x: set up for LEN
+                    {
                         if (m >= 258 && length >= 10)
                         {
                             r = InflateFast(
                                 lbits, dbits, ltree, ltree_index, dtree, dtree_index, blocks,
-                                input, ref consumed, ref length, out z.Message);
+                                input, ref consumed, ref length, out message);
 
                             m = blocks.GetBytesToEnd();
 
@@ -111,9 +111,11 @@ namespace Ionic.Zlib
 
                         mode = LEN;
                         goto case LEN;
+                    }
 
                     case LEN:  // i: get length/literal/eob next
-                        j = need;
+                    {
+                        int j = need;
 
                         while (k < j)
                         {
@@ -127,7 +129,7 @@ namespace Ionic.Zlib
                             k += 8;
                         }
 
-                        tindex = (tree_index + (b & inflateMask[j])) * 3;
+                        int tindex = (tree_index + (b & inflateMask[j])) * 3;
 
                         b >>= tree[tindex + 1];
                         k -= tree[tindex + 1];
@@ -163,15 +165,15 @@ namespace Ionic.Zlib
                             break;
                         }
                         mode = BADCODE; // invalid code
-                        z.Message = "invalid literal/length code";
+                        message = "invalid literal/length code";
                         r = ZlibCode.DataError;
 
                         return blocks.Flush(r, ref output, ref written);
-
+                    }
 
                     case LENEXT:  // i: getting length extra (have base)
-                        j = bitsToGet;
-
+                    {
+                        int j = bitsToGet;
                         while (k < j)
                         {
                             if (length != 0)
@@ -194,10 +196,11 @@ namespace Ionic.Zlib
                         tree_index = dtree_index;
                         mode = DIST;
                         goto case DIST;
+                    }
 
                     case DIST:  // i: get distance next
-                        j = need;
-
+                    {
+                        int j = need;
                         while (k < j)
                         {
                             if (length != 0)
@@ -210,7 +213,7 @@ namespace Ionic.Zlib
                             k += 8;
                         }
 
-                        tindex = (tree_index + (b & inflateMask[j])) * 3;
+                        int tindex = (tree_index + (b & inflateMask[j])) * 3;
 
                         b >>= tree[tindex + 1];
                         k -= tree[tindex + 1];
@@ -232,14 +235,15 @@ namespace Ionic.Zlib
                             break;
                         }
                         mode = BADCODE; // invalid code
-                        z.Message = "invalid distance code";
+                        message = "invalid distance code";
                         r = ZlibCode.DataError;
 
                         return blocks.Flush(r, ref output, ref written);
-
+                    }
 
                     case DISTEXT:  // i: getting distance extra
-                        j = bitsToGet;
+                    {
+                        int j = bitsToGet;
 
                         while (k < j)
                         {
@@ -260,8 +264,10 @@ namespace Ionic.Zlib
 
                         mode = COPY;
                         goto case COPY;
+                    }
 
                     case COPY:  // o: copying bytes in window, waiting for space
+                    {
                         f = q - dist;
                         while (f < 0)
                         {
@@ -304,8 +310,10 @@ namespace Ionic.Zlib
                         }
                         mode = START;
                         break;
+                    }
 
                     case LIT:  // o: got literal, waiting for output space
+                    {
                         if (m == 0)
                         {
                             if (q == windowLength && blocks.readAt != 0)
@@ -335,8 +343,10 @@ namespace Ionic.Zlib
 
                         mode = START;
                         break;
+                    }
 
                     case WASH:  // o: got eob, possibly more output
+                    {
                         if (k > 7)
                         {
                             // return unused byte, if any
@@ -353,6 +363,7 @@ namespace Ionic.Zlib
 
                         mode = END;
                         goto case END;
+                    }
 
                     case END:
                         r = ZlibCode.StreamEnd;
