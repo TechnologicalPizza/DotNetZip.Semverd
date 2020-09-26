@@ -1470,7 +1470,7 @@ namespace Ionic.Zlib
 
         internal ZlibCode Initialize(ZlibCodec codec, CompressionLevel level)
         {
-            return Initialize(codec, level, ZlibConstants.WindowBitsMax);
+            return Initialize(codec, level, ZlibConstants.DefaultWindowBits);
         }
 
         internal ZlibCode Initialize(ZlibCodec codec, CompressionLevel level, int bits)

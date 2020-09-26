@@ -22,13 +22,18 @@ namespace Ionic.Zlib
 
     public abstract class ZlibBaseStream : Stream
     {
+        /// <summary>
+        /// The default size of the working buffer.
+        /// </summary>
+        public const int DefaultWorkingBufferSize = 1024 * 32;
+
         private ZlibCodec _z;
         private ZlibFlushType _flushMode;
         private ZlibStreamFlavor _flavor;
         private CompressionMode _compressionMode;
         private CompressionLevel _level;
         private bool _leaveOpen;
-        private int _bufferSize = ZlibConstants.WorkingBufferSizeDefault;
+        private int _bufferSize = DefaultWorkingBufferSize;
 
         private CompressionStrategy _strategy = CompressionStrategy.Default;
         private byte[] _workingBuffer;
@@ -97,15 +102,11 @@ namespace Ionic.Zlib
         /// <summary>
         ///   The size of the working buffer for the compression codec.
         /// </summary>
-        ///
         /// <remarks>
         /// <para>
-        ///   The working buffer is used for all stream operations.  The default size is
-        ///   1024 bytes.  The minimum size is 128 bytes. You may get better performance
-        ///   with a larger buffer.  Then again, you might not.  You would have to test
-        ///   it.
+        ///   The working buffer is used for all stream operations.
+        ///   A larger buffer may yield better performance.
         /// </para>
-        ///
         /// <para>
         ///   Set this before the first call to <c>Read()</c> or <c>Write()</c> on the
         ///   stream. If you try to set it afterwards, it will throw.
@@ -119,23 +120,11 @@ namespace Ionic.Zlib
                 AssertNotDisposed();
                 if (_workingBuffer != null)
                     throw new ZlibException("The working buffer is already set.");
-                if (value < ZlibConstants.WorkingBufferSizeMin)
-                    throw new ZlibException(string.Format(
-                        "Use a larger buffer size, at least {0}.", ZlibConstants.WorkingBufferSizeMin));
+                if (value <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 _bufferSize = value;
             }
         }
-
-
-        /// <summary>
-        /// Returns the total number of bytes input so far.
-        /// </summary>
-        public virtual long TotalIn => throw new NotImplementedException();
-
-        /// <summary>
-        /// Returns the total number of bytes output so far.
-        /// </summary>
-        public virtual long TotalOut => throw new NotImplementedException();
 
         #endregion
 
@@ -344,7 +333,7 @@ namespace Ionic.Zlib
 
                         Span<byte> tmp = stackalloc byte[8];
                         int c1 = _crc.Result;
-                        int c2 = (int)(_crc.TotalBytesRead & 0x00000000FFFFFFFF);
+                        int c2 = (int)(_crc.BytesProcessed & 0x00000000FFFFFFFF);
 
                         BinaryPrimitives.WriteInt32LittleEndian(tmp, c1);
                         BinaryPrimitives.WriteInt32LittleEndian(tmp.Slice(4), c2);

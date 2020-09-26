@@ -78,7 +78,7 @@ namespace Ionic.Zlib
         /// setting alone if you don't know what it is.  The maximum value is 15 bits, which implies
         /// a 32k window.  
         /// </remarks>
-        public int WindowBits = ZlibConstants.WindowBitsDefault;
+        public int WindowBits = ZlibConstants.DefaultWindowBits;
 
         /// <summary>
         /// The compression strategy to use.

@@ -5,23 +5,11 @@ using System;
 namespace Ionic
 {
     /// <summary>
-    /// A Stream that calculates a CRC32 (a checksum) on all bytes read,
-    /// or on all bytes written.
+    /// Calculates a CRC32 checksum of all read or written bytes.
     /// </summary>
-    ///
     /// <remarks>
-    /// <para>
-    /// This class can be used to verify the CRC of a ZipEntry when
-    /// reading from a stream, or to calculate a CRC when writing to a
-    /// stream.  The stream should be used to either read, or write, but
-    /// not both.  If you intermix reads and writes, the results are not
-    /// defined.
-    /// </para>
-    ///
-    /// <para>
-    /// This class is intended primarily for use internally by the
-    /// DotNetZip library.
-    /// </para>
+    /// This class can be used to verify the CRC of data when
+    /// reading from a stream, or to calculate a CRC when writing to a stream.
     /// </remarks>
     public class CrcCalculatorStream : System.IO.Stream
     {
@@ -156,7 +144,7 @@ namespace Ionic
         ///   This is either the total number of bytes read, or the total number of
         ///   bytes written, depending on the direction of this stream.
         /// </remarks>
-        public long TotalBytesSlurped => _crc32.TotalBytesRead;
+        public long TotalBytesSlurped => _crc32.BytesProcessed;
 
         /// <summary>
         ///   Provides the current CRC for all blocks slurped in.
@@ -198,10 +186,10 @@ namespace Ionic
 
             if (_lengthLimit != UnsetLengthLimit)
             {
-                if (_crc32.TotalBytesRead >= _lengthLimit)
+                if (_crc32.BytesProcessed >= _lengthLimit)
                     return 0; // EOF
 
-                long bytesRemaining = _lengthLimit - _crc32.TotalBytesRead;
+                long bytesRemaining = _lengthLimit - _crc32.BytesProcessed;
                 if (bytesRemaining < buffer.Length)
                     buffer = buffer.Slice(0, (int)bytesRemaining);
             }
@@ -292,7 +280,7 @@ namespace Ionic
         /// </summary>
         public override long Position
         {
-            get => _crc32.TotalBytesRead;
+            get => _crc32.BytesProcessed;
             set => throw new NotSupportedException();
         }
 

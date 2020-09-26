@@ -13,21 +13,21 @@ namespace Ionic
     {
         // TODO: vectorize with version from chromium source
 
-        private const int BUFFER_SIZE = 4096;
+        private const int StackBufferSize = 4096;
 
         // private member vars
-        private uint dwPolynomial;
-        private bool reverseBits;
-        private uint[] crc32Table;
+        private uint _dwPolynomial;
+        private bool _reverseBits;
+        private uint[] _crc32Table;
         private uint _register = 0xFFFFFFFFU;
 
         /// <summary>
-        ///   Indicates the total number of bytes applied to the CRC.
+        ///   Gets the total number of bytes applied to the CRC.
         /// </summary>
-        public long TotalBytesRead { get; private set; }
+        public long BytesProcessed { get; private set; }
 
         /// <summary>
-        /// Indicates the current CRC for all blocks slurped in.
+        /// Gets the current accumulated CRC checksum.
         /// </summary>
         public int Result => unchecked((int)~_register);
 
@@ -40,12 +40,12 @@ namespace Ionic
             if (input == null)
                 throw new ArgumentNullException(nameof(input));
 
-            Span<byte> buffer = stackalloc byte[BUFFER_SIZE];
+            Span<byte> buffer = stackalloc byte[StackBufferSize];
             int count;
             while ((count = input.Read(buffer)) > 0)
             {
-                var buf = buffer.Slice(0, count);
-                Slurp(buf);
+                var slice = buffer.Slice(0, count);
+                Slurp(slice);
             }
         }
 
@@ -65,13 +65,13 @@ namespace Ionic
             if (input == null)
                 throw new ArgumentNullException(nameof(input));
 
-            Span<byte> buffer = stackalloc byte[BUFFER_SIZE];
+            Span<byte> buffer = stackalloc byte[StackBufferSize];
             int count;
             while ((count = input.Read(buffer)) > 0)
             {
-                var buf = buffer.Slice(0, count);
-                Slurp(buf);
-                output?.Write(buf);
+                var slice = buffer.Slice(0, count);
+                Slurp(slice);
+                output?.Write(slice);
             }
         }
 
@@ -90,7 +90,7 @@ namespace Ionic
 
         internal int Compute(uint W, byte B)
         {
-            return (int)(crc32Table[(W ^ B) & 0xFF] ^ (W >> 8));
+            return (int)(_crc32Table[(W ^ B) & 0xFF] ^ (W >> 8));
         }
 
         /// <summary>
@@ -100,21 +100,26 @@ namespace Ionic
         public void Slurp(ReadOnlySpan<byte> block)
         {
             // bzip algorithm
-            for (int i = 0; i < block.Length; i++)
+
+            if (_reverseBits)
             {
-                byte b = block[i];
-                if (reverseBits)
+                for (int i = 0; i < block.Length; i++)
                 {
-                    uint temp = (_register >> 24) ^ b;
-                    _register = (_register << 8) ^ crc32Table[temp];
-                }
-                else
-                {
-                    uint temp = (_register & 0x000000FF) ^ b;
-                    _register = (_register >> 8) ^ crc32Table[temp];
+                    byte b = block[i];
+                    uint index = (_register >> 24) ^ b;
+                    _register = (_register << 8) ^ _crc32Table[index];
                 }
             }
-            TotalBytesRead += block.Length;
+            else
+            {
+                for (int i = 0; i < block.Length; i++)
+                {
+                    byte b = block[i];
+                    uint index = (_register & 0x000000FF) ^ b;
+                    _register = (_register >> 8) ^ _crc32Table[index];
+                }
+            }
+            BytesProcessed += block.Length;
         }
 
 
@@ -124,15 +129,15 @@ namespace Ionic
         /// <param name = "b">the byte to include into the CRC .  </param>
         public void Slurp(byte b)
         {
-            if (reverseBits)
+            if (_reverseBits)
             {
                 uint tmp = (_register >> 24) ^ b;
-                _register = (_register << 8) ^ crc32Table[tmp];
+                _register = (_register << 8) ^ _crc32Table[tmp];
             }
             else
             {
                 uint tmp = (_register & 0x000000FF) ^ b;
-                _register = (_register >> 8) ^ crc32Table[tmp];
+                _register = (_register >> 8) ^ _crc32Table[tmp];
             }
         }
 
@@ -152,12 +157,12 @@ namespace Ionic
         /// <param name = "n">the number of times that byte should be repeated. </param>
         public void Slurp(byte b, int n)
         {
-            if (reverseBits)
+            if (_reverseBits)
             {
                 while (n-- > 0)
                 {
                     uint tmp = (_register >> 24) ^ b;
-                    _register = (_register << 8) ^ crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
+                    _register = (_register << 8) ^ _crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
                 }
             }
             else
@@ -165,7 +170,7 @@ namespace Ionic
                 while (n-- > 0)
                 {
                     uint tmp = (_register & 0x000000FF) ^ b;
-                    _register = (_register >> 8) ^ crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
+                    _register = (_register >> 8) ^ _crc32Table[(tmp >= 0) ? tmp : (tmp + 256)];
                 }
             }
         }
@@ -199,35 +204,28 @@ namespace Ionic
 
         private void GenerateLookupTable()
         {
-            crc32Table = new uint[256];
             unchecked
             {
-                uint dwCrc;
                 byte i = 0;
                 do
                 {
-                    dwCrc = i;
-                    for (byte j = 8; j > 0; j--)
+                    uint dwCrc = i;
+                    for (int j = 0; j < 8; j++)
                     {
                         if ((dwCrc & 1) == 1)
-                        {
-                            dwCrc = (dwCrc >> 1) ^ dwPolynomial;
-                        }
+                            dwCrc = (dwCrc >> 1) ^ _dwPolynomial;
                         else
-                        {
                             dwCrc >>= 1;
-                        }
                     }
-                    if (reverseBits)
-                    {
-                        crc32Table[ReverseBits(i)] = ReverseBits(dwCrc);
-                    }
+
+                    if (_reverseBits)
+                        _crc32Table[ReverseBits(i)] = ReverseBits(dwCrc);
                     else
-                    {
-                        crc32Table[i] = dwCrc;
-                    }
+                        _crc32Table[i] = dwCrc;
+
                     i++;
-                } while (i != 0);
+                }
+                while (i != 0);
             }
         }
 
@@ -277,7 +275,7 @@ namespace Ionic
             uint crc2 = (uint)crc;
 
             // put operator for one zero bit in odd
-            odd[0] = dwPolynomial;  // the CRC-32 polynomial
+            odd[0] = _dwPolynomial;  // the CRC-32 polynomial
             uint row = 1;
             for (int i = 1; i < 32; i++)
             {
@@ -349,8 +347,7 @@ namespace Ionic
         ///     those, you should pass false.
         ///   </para>
         /// </remarks>
-        public Crc32(bool reverseBits) :
-            this(unchecked((int)0xEDB88320), reverseBits)
+        public Crc32(bool reverseBits) : this(0xEDB88320, reverseBits)
         {
         }
 
@@ -380,10 +377,12 @@ namespace Ionic
         ///     <c>reverseBits</c> parameter.
         ///   </para>
         /// </remarks>
-        public Crc32(int polynomial, bool reverseBits)
+        public Crc32(uint polynomial, bool reverseBits)
         {
-            this.reverseBits = reverseBits;
-            dwPolynomial = (uint)polynomial;
+            _reverseBits = reverseBits;
+            _dwPolynomial = polynomial;
+            _crc32Table = new uint[256];
+
             GenerateLookupTable();
         }
 
