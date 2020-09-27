@@ -67,7 +67,7 @@ namespace Ionic.Zlib.Tests
             string? message;
 
             while (
-                compressorTotalBytesIn != TextToCompress.Length &&
+                compressorTotalBytesIn != compressor.InputBuffer.Length &&
                 compressorTotalBytesOut < bufferSize)
             {
                 // force small buffers
@@ -821,6 +821,7 @@ namespace Ionic.Zlib.Tests
 
             var fi1 = new FileInfo(FileToCompress);
             int crc1 = DoCrc(FileToCompress);
+            byte[] buffer = new byte[1024];
 
             // four trials, all combos of FileName and Comment null or not null.
             for (int k = 0; k < 4; k++)
@@ -841,7 +842,6 @@ namespace Ionic.Zlib.Tests
                     if (k > 2)
                         compressor.Comment = "Compressing: " + FileToCompress;
 
-                    byte[] buffer = new byte[1024];
                     n = -1;
                     while (n != 0)
                     {
@@ -865,22 +865,17 @@ namespace Ionic.Zlib.Tests
                 {
                     using var input = File.OpenRead(CompressedFile);
 
-                    Stream decompressor = null;
+                    Stream? decompressor = null;
                     try
                     {
-                        switch (j)
+                        decompressor = j switch
                         {
-                            case 0:
-                                decompressor = new GZipStream(input, CompressionMode.Decompress, true);
-                                break;
-                            case 1:
-                                decompressor = new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress, true);
-                                break;
-                        }
+                            0 => new GZipStream(input, CompressionMode.Decompress, true),
+                            1 => new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress, true),
+                            _ => throw new InvalidOperationException(),
+                        };
 
-                        string DecompressedFile =
-                                                    string.Format("{0}.{1}.decompressed", CompressedFile, (j == 0) ? "Ionic" : "BCL");
-
+                        string DecompressedFile = string.Format("{0}.{1}.decompressed", CompressedFile, (j == 0) ? "Ionic" : "BCL");
                         TestContext.WriteLine("........{0} ...", Path.GetFileName(DecompressedFile));
 
                         using (var s2 = File.Create(DecompressedFile))
@@ -900,8 +895,7 @@ namespace Ionic.Zlib.Tests
                     }
                     finally
                     {
-                        if (decompressor != null)
-                            decompressor.Dispose();
+                        decompressor?.Dispose();
                     }
                 }
             }

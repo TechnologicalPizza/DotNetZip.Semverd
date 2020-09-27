@@ -2,7 +2,7 @@
 
 namespace Ionic.Zlib
 {
-    internal enum DeflateFlavor
+    public enum DeflateFlavor
     {
         Store,
         Fast,

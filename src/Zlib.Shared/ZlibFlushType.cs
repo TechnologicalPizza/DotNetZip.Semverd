@@ -11,6 +11,8 @@ namespace Ionic.Zlib
     /// </remarks>
     public enum ZlibFlushType
     {
+        Unknown = -1,
+
         /// <summary>No flush at all.</summary>
         None = 0,
 

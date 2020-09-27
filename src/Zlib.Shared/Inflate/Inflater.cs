@@ -11,7 +11,7 @@ namespace Ionic.Zlib
 
         private const int Z_DEFLATED = 8;
 
-        private static readonly byte[] mark = new byte[] { 0, 0, 0xff, 0xff };
+        private static ReadOnlySpan<byte> Mark => new byte[] { 0, 0, 0xff, 0xff };
 
         private InflaterMode mode; // current inflate mode
 
@@ -196,7 +196,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.BLOCKS:
                         r = blocks.Process(
-                            r, input, 
+                            r, input,
                             ref output, ref consumed, ref length, ref written, out message);
 
                         if (r == ZlibCode.DataError)
@@ -323,16 +323,15 @@ namespace Ionic.Zlib
                 return ZlibCode.BufError;
 
             // search
-            while (!input.IsEmpty && marker < 4)
+            while (input.Length - consumed > 0 && marker < 4)
             {
-                if (input[0] == mark[marker])
+                if (input[consumed] == Mark[marker])
                     marker++;
-                else if (input[0] != 0)
+                else if (input[consumed] != 0)
                     marker = 0;
                 else
                     marker = 4 - marker;
 
-                input = input.Slice(1);
                 consumed++;
             }
 

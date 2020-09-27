@@ -9,7 +9,7 @@ namespace Ionic.Zlib
         private const int MANY = 1440;
 
         // Table for deflate from PKZIP's appnote.txt.
-        internal static readonly int[] border = new int[]
+        public static ReadOnlySpan<byte> Border => new byte[]
         {
             16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
         };
@@ -288,6 +288,7 @@ namespace Ionic.Zlib
                         if (bitLengths == null)
                             throw new ZlibException("Invalid state.");
 
+                        var border = Border;
                         while (index < 4 + (table >> 10))
                         {
                             while (k < 3)

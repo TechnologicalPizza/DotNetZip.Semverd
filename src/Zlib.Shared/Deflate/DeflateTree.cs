@@ -1,5 +1,8 @@
 // See the LICENSE file for license details.
 
+using System;
+using System.Runtime.CompilerServices;
+
 namespace Ionic.Zlib
 {
     internal sealed class DeflateTree
@@ -21,9 +24,15 @@ namespace Ionic.Zlib
         };
 
         // extra bits for each bit length code
-        internal static readonly int[] extra_blbits = new int[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7 };
+        internal static readonly int[] extra_blbits = new int[] 
+        {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7
+        };
 
-        internal static readonly sbyte[] bl_order = new sbyte[] { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
+        internal static ReadOnlySpan<sbyte> BlOrder => new sbyte[] 
+        { 
+            16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 
+        };
 
 
         // The lengths of the bit length codes are sent in order of decreasing
@@ -35,7 +44,7 @@ namespace Ionic.Zlib
         // see definition of array dist_code below
         //internal const int DIST_CODE_LEN = 512;
 
-        private static readonly sbyte[] _dist_code = new sbyte[]
+        internal static ReadOnlySpan<sbyte> DistCode => new sbyte[]
         {
             0,  1,  2,  3,  4,  4,  5,  5,  6,  6,  6,  6,  7,  7,  7,  7,
             8,  8,  8,  8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  9,  9,  9,
@@ -71,7 +80,7 @@ namespace Ionic.Zlib
             29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29
         };
 
-        internal static readonly sbyte[] LengthCode = new sbyte[]
+        internal static ReadOnlySpan<sbyte> LengthCode => new sbyte[]
         {
             0,   1,  2,  3,  4,  5,  6,  7,  8,  8,  9,  9, 10, 10, 11, 11,
             12, 12, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 15,
@@ -109,35 +118,47 @@ namespace Ionic.Zlib
         /// <summary>
         /// Map from a distance to a distance code.
         /// </summary>
-        /// <remarks> 
-        /// No side effects. _dist_code[256] and _dist_code[257] are never used.
-        /// </remarks>
         internal static int DistanceCode(int dist)
         {
+            return DistanceCode(DistCode, dist);
+        }
+
+        /// <summary>
+        /// Map from a distance to a distance code.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int DistanceCode(ReadOnlySpan<sbyte> source, int dist)
+        {
             return (dist < 256)
-                ? _dist_code[dist]
-                : _dist_code[256 + (int)((uint)dist >> 7)];
+                ? source[dist]
+                : source[256 + (int)((uint)dist >> 7)];
         }
 
         internal short[] dyn_tree; // the dynamic tree
         internal int max_code; // largest code with non zero frequency
         internal StaticTree staticTree; // the corresponding static tree
 
-        // Compute the optimal bit lengths for a tree and update the total bit length
-        // for the current block.
-        // IN assertion: the fields freq and dad are set, heap[heap_max] and
-        //    above are the tree nodes sorted by increasing frequency.
-        // OUT assertions: the field len is set to the optimal bit length, the
-        //     array bl_count contains the frequencies for each bit length.
-        //     The length opt_len is updated; static_len is also updated if stree is
-        //     not null.
-        internal void gen_bitlen(Deflater s)
+        /// <summary>
+        /// Compute the optimal bit lengths for a tree and update the total bit length
+        /// for the current block.
+        /// <para>
+        /// IN assertion: the fields freq and dad are set, heap[heap_max] and
+        /// above are the tree nodes sorted by increasing frequency.
+        /// </para>
+        /// <para>
+        /// OUT assertions: the field len is set to the optimal bit length, the
+        /// array bl_count contains the frequencies for each bit length.
+        /// The length opt_len is updated; static_len is also updated if stree is
+        /// not null.
+        /// </para>
+        /// </summary>
+        internal void GenBitLengths(Deflater s)
         {
             short[] tree = dyn_tree;
-            short[] stree = staticTree.treeCodes;
-            int[] extra = staticTree.extraBits;
-            int base_Renamed = staticTree.extraBase;
-            int max_length = staticTree.maxLength;
+            short[]? stree = staticTree.TreeCodes;
+            int[]? extra = staticTree.ExtraBits;
+            int base_Renamed = staticTree.ExtraBase;
+            int max_length = staticTree.MaxLength;
             int h; // heap index
             int n, m; // iterate over the tree elements
             int bits; // bit length
@@ -213,17 +234,23 @@ namespace Ionic.Zlib
             }
         }
 
-        // Construct one Huffman tree and assigns the code bit strings and lengths.
-        // Update the total bit length for the current block.
-        // IN assertion: the field freq is set for all tree elements.
-        // OUT assertions: the fields len and code are set to the optimal bit length
-        //     and corresponding code. The length opt_len is updated; static_len is
-        //     also updated if stree is not null. The field max_code is set.
-        internal void build_tree(Deflater s)
+        /// <summary>
+        /// Construct one Huffman tree and assigns the code bit strings and lengths.
+        /// Update the total bit length for the current block.
+        /// <para>
+        /// IN assertion: the field freq is set for all tree elements.
+        /// </para>
+        /// <para>
+        /// OUT assertions: the fields len and code are set to the optimal bit length
+        /// and corresponding code. The length opt_len is updated; static_len is
+        /// also updated if stree is not null. The field max_code is set.
+        /// </para>
+        /// </summary>
+        internal void BuildTree(Deflater s)
         {
             short[] tree = dyn_tree;
-            short[] stree = staticTree.treeCodes;
-            int elems = staticTree.elems;
+            short[]? stree = staticTree.TreeCodes;
+            int elems = staticTree.Elements;
             int n, m;            // iterate over heap elements
             int max_code = -1;  // largest code with non zero frequency
             int node;            // new node being created
@@ -300,21 +327,28 @@ namespace Ionic.Zlib
             // At this point, the fields freq and dad are set. We can now
             // generate the bit lengths.
 
-            gen_bitlen(s);
+            GenBitLengths(s);
 
             // The field len is now set, we can generate the bit codes
-            gen_codes(tree, max_code, s.bl_count);
+            GenCodes(tree, max_code, s.bl_count);
         }
 
-        // Generate the codes for a given tree and bit counts (which need not be
-        // optimal).
-        // IN assertion: the array bl_count contains the bit length statistics for
-        // the given tree and the field len is set for all tree elements.
-        // OUT assertion: the field code is set for all tree elements of non
-        //     zero code length.
-        internal static void gen_codes(short[] tree, int max_code, short[] bl_count)
+        /// <summary>
+        /// Generate the codes for a given tree and bit counts (which need not be optimal).
+        /// <para>
+        /// IN assertion: the array bl_count contains the bit length statistics for
+        /// the given tree and the field len is set for all tree elements.
+        /// </para>
+        /// <para>
+        /// OUT assertion: the field code is set for all tree elements of non
+        /// zero code length.
+        /// </para>
+        /// </summary>
+        internal static void GenCodes(short[] tree, int max_code, short[] bl_count)
         {
-            short[] next_code = new short[DeflateConstants.MAX_BITS + 1]; // next code value for each bit length
+            // next code value for each bit length
+            Span<short> next_code = stackalloc short[DeflateConstants.MAX_BITS + 1];
+
             short code = 0; // running code value
             int bits; // bit index
             int n; // code index
@@ -339,20 +373,24 @@ namespace Ionic.Zlib
                 if (len == 0)
                     continue;
                 // Now reverse the bits
-                tree[n * 2] = unchecked((short)bi_reverse(next_code[len]++, len));
+                tree[n * 2] = unchecked((short)BiReverse(next_code[len]++, len));
             }
         }
 
-        // Reverse the first len bits of a code, using straightforward code (a faster
-        // method would use a table)
-        // IN assertion: 1 <= len <= 15
-        internal static int bi_reverse(int code, int len)
+        /// <summary>
+        /// Reverse the first len bits of a code, using straightforward code 
+        /// (a faster method would use a table)
+        /// <para>
+        /// IN assertion: 1 &lt;= len &lt;= 15
+        /// </para>
+        /// </summary>
+        internal static int BiReverse(int code, int len)
         {
             int res = 0;
             do
             {
                 res |= code & 1;
-                code >>= 1; //SharedUtils.URShift(code, 1);
+                code >>= 1;
                 res <<= 1;
             }
             while (--len > 0);

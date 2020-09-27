@@ -4,7 +4,8 @@ namespace Ionic.Zlib
 {
     internal sealed class StaticTree
     {
-        internal static readonly short[] lengthAndLiteralsTreeCodes = new short[] {
+        public static short[] LengthAndLiteralsTreeCodes { get; } = new short[] 
+        {
             12, 8, 140, 8, 76, 8, 204, 8, 44, 8, 172, 8, 108, 8, 236, 8,
             28, 8, 156, 8, 92, 8, 220, 8, 60, 8, 188, 8, 124, 8, 252, 8,
              2, 8, 130, 8, 66, 8, 194, 8, 34, 8, 162, 8, 98, 8, 226, 8,
@@ -43,44 +44,39 @@ namespace Ionic.Zlib
              3, 8, 131, 8, 67, 8, 195, 8, 35, 8, 163, 8, 99, 8, 227, 8
         };
 
-        internal static readonly short[] distTreeCodes = new short[] {
+        public static short[] DistTreeCodes { get; } = new short[] 
+        {
             0, 5, 16, 5, 8, 5, 24, 5, 4, 5, 20, 5, 12, 5, 28, 5,
             2, 5, 18, 5, 10, 5, 26, 5, 6, 5, 22, 5, 14, 5, 30, 5,
             1, 5, 17, 5, 9, 5, 25, 5, 5, 5, 21, 5, 13, 5, 29, 5,
-            3, 5, 19, 5, 11, 5, 27, 5, 7, 5, 23, 5 };
+            3, 5, 19, 5, 11, 5, 27, 5, 7, 5, 23, 5
+        };
 
-        internal static StaticTree Literals { get; }
-        internal static StaticTree Distances { get; }
-        internal static StaticTree BitLengths { get; }
+        public static StaticTree Literals { get; } = new StaticTree(
+                LengthAndLiteralsTreeCodes, DeflateTree.ExtraLengthBits,
+                DeflateConstants.LITERALS + 1, DeflateConstants.L_CODES, DeflateConstants.MAX_BITS);
 
-        internal short[]? treeCodes; // static tree or null
-        internal int[]? extraBits;   // extra bits for each code or null
-        internal int extraBase;     // base index for extra_bits
-        internal int elems;         // max number of elements in the tree
-        internal int maxLength;     // max bit length for the codes
+        public static StaticTree Distances { get; } = new StaticTree(
+                DistTreeCodes, DeflateTree.ExtraDistanceBits,
+                0, DeflateConstants.D_CODES, DeflateConstants.MAX_BITS);
+
+        public static StaticTree BitLengths { get; } = new StaticTree(
+                null, DeflateTree.extra_blbits,
+                0, DeflateConstants.BL_CODES, DeflateConstants.MAX_BL_BITS);
+
+        public short[]? TreeCodes { get; private set; } // static tree or null
+        public int[]? ExtraBits { get; private set; }   // extra bits for each code or null
+        public int ExtraBase { get; private set; }      // base index for extra_bits
+        public int Elements { get; private set; }       // max number of elements in the tree
+        public int MaxLength { get; private set; }      // max bit length for the codes
 
         private StaticTree(short[]? treeCodes, int[]? extraBits, int extraBase, int elems, int maxLength)
         {
-            this.treeCodes = treeCodes;
-            this.extraBits = extraBits;
-            this.extraBase = extraBase;
-            this.elems = elems;
-            this.maxLength = maxLength;
-        }
-
-        static StaticTree()
-        {
-            Literals = new StaticTree(
-                lengthAndLiteralsTreeCodes, DeflateTree.ExtraLengthBits,
-                DeflateConstants.LITERALS + 1, DeflateConstants.L_CODES, DeflateConstants.MAX_BITS);
-
-            Distances = new StaticTree(
-                distTreeCodes, DeflateTree.ExtraDistanceBits,
-                0, DeflateConstants.D_CODES, DeflateConstants.MAX_BITS);
-
-            BitLengths = new StaticTree(
-                null, DeflateTree.extra_blbits,
-                0, DeflateConstants.BL_CODES, DeflateConstants.MAX_BL_BITS);
+            TreeCodes = treeCodes;
+            ExtraBits = extraBits;
+            ExtraBase = extraBase;
+            Elements = elems;
+            MaxLength = maxLength;
         }
     }
 }

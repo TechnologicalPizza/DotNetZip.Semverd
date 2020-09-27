@@ -516,16 +516,19 @@ namespace Ionic.Zlib
                 totalBytesRead += n;
 
                 short extraLength = (short)(header[0] + header[1] * 256);
-                byte[] extra = new byte[extraLength];
-                n = BaseStream.Read(extra, 0, extra.Length);
+                var extra = extraLength < 2048 ? stackalloc byte[extraLength] : new byte[extraLength];
+                
+                n = BaseStream.Read(extra);
                 if (n != extraLength)
                     throw new ZlibException("Unexpected end-of-file reading GZIP header.");
                 totalBytesRead += n;
             }
             if ((header[3] & 0x08) == 0x08)
                 _GzipFileName = ReadZeroTerminatedString();
+
             if ((header[3] & 0x10) == 0x010)
                 _GzipComment = ReadZeroTerminatedString();
+
             if ((header[3] & 0x02) == 0x02)
                 Read(stackalloc byte[1]); // CRC16, ignore
 
