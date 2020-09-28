@@ -1,9 +1,12 @@
 // See the LICENSE file for license details.
 
+using System;
+using System.IO;
+
 namespace Ionic.Zlib
 {
     /// <summary>
-    /// A class for compressing and decompressing streams using the Deflate algorithm.
+    /// Stream for compression or decompression using the Deflate format.
     /// </summary>
     ///
     /// <remarks>
@@ -11,7 +14,7 @@ namespace Ionic.Zlib
     /// <para>
     ///   The DeflateStream is a <see
     ///   href="http://en.wikipedia.org/wiki/Decorator_pattern">Decorator</see> on a <see
-    ///   cref="System.IO.Stream"/>.  It adds DEFLATE compression or decompression to any
+    ///   cref="Stream"/>.  It adds DEFLATE compression or decompression to any
     ///   stream.
     /// </para>
     ///
@@ -39,56 +42,42 @@ namespace Ionic.Zlib
     public class DeflateStream : ZlibBaseStream
     {
         /// <summary>
+        /// The position of the stream pointer.
+        /// </summary>
+        ///
+        /// <remarks>
+        ///   Setting this property always throws a <see cref="NotSupportedException"/>. 
+        ///   Reading will return the total bytes written out, if used in writing,
+        ///   or the total bytes read in, if used in reading. 
+        ///   The count may refer to compressed bytes or uncompressed bytes,
+        ///   depending on how you've used the stream.
+        /// </remarks>
+        public override long Position
+        {
+            get
+            {
+                throw new NotImplementedException();
+                //if (IsCompressor)
+                //    return Codec.TotalBytesOut;
+                //if (IsDecompressor)
+                //    return Codec.TotalBytesIn;
+                //return 0;
+            }
+            set => throw new NotSupportedException();
+        }
+
+        /// <summary>
         ///   Create a DeflateStream using the specified CompressionMode.
         /// </summary>
         ///
         /// <remarks>
         ///   When mode is <c>CompressionMode.Compress</c>, the DeflateStream will use
-        ///   the default compression level. The underlying stream will be closed when
+        ///   the default compression level. The "captive" stream will be closed when
         ///   the DeflateStream is closed.
         /// </remarks>
-        ///
-        /// <example>
-        /// This example uses a DeflateStream to compress data from a file, and writes
-        /// the compressed data to another file.
-        /// <code>
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(fileToCompress + ".deflated"))
-        ///     {
-        ///         using (Stream compressor = new DeflateStream(raw, CompressionMode.Compress))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n;
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 compressor.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        ///
-        /// <code lang="VB">
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(fileToCompress &amp; ".deflated")
-        ///         Using compressor As Stream = New DeflateStream(raw, CompressionMode.Compress)
-        ///             Dim buffer As Byte() = New Byte(4096) {}
-        ///             Dim n As Integer = -1
-        ///             Do While (n &lt;&gt; 0)
-        ///                 If (n &gt; 0) Then
-        ///                     compressor.Write(buffer, 0, n)
-        ///                 End If
-        ///                 n = input.Read(buffer, 0, buffer.Length)
-        ///             Loop
-        ///         End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
         /// <param name="stream">The stream which will be read or written.</param>
         /// <param name="mode">Indicates whether the DeflateStream will compress or decompress.</param>
-        public DeflateStream(System.IO.Stream stream, CompressionMode mode)
+        public DeflateStream(Stream stream, CompressionMode mode)
             : this(stream, mode, CompressionLevel.Default, false)
         {
         }
@@ -101,59 +90,15 @@ namespace Ionic.Zlib
         ///
         /// <para>
         ///   When mode is <c>CompressionMode.Decompress</c>, the level parameter is
-        ///   ignored.  The underlying stream will be closed when the DeflateStream is closed.
+        ///   ignored.  The "captive" stream will be closed when the DeflateStream is
+        ///   closed.
         /// </para>
         ///
         /// </remarks>
-        ///
-        /// <example>
-        ///
-        ///   This example uses a DeflateStream to compress data from a file, and writes
-        ///   the compressed data to another file.
-        ///
-        /// <code>
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(fileToCompress + ".deflated"))
-        ///     {
-        ///         using (Stream compressor = new DeflateStream(raw,
-        ///                                                      CompressionMode.Compress,
-        ///                                                      CompressionLevel.BestCompression))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n= -1;
-        ///             while (n != 0)
-        ///             {
-        ///                 if (n &gt; 0)
-        ///                     compressor.Write(buffer, 0, n);
-        ///                 n= input.Read(buffer, 0, buffer.Length);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        ///
-        /// <code lang="VB">
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(fileToCompress &amp; ".deflated")
-        ///         Using compressor As Stream = New DeflateStream(raw, CompressionMode.Compress, CompressionLevel.BestCompression)
-        ///             Dim buffer As Byte() = New Byte(4096) {}
-        ///             Dim n As Integer = -1
-        ///             Do While (n &lt;&gt; 0)
-        ///                 If (n &gt; 0) Then
-        ///                     compressor.Write(buffer, 0, n)
-        ///                 End If
-        ///                 n = input.Read(buffer, 0, buffer.Length)
-        ///             Loop
-        ///         End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
         /// <param name="stream">The stream to be read or written while deflating or inflating.</param>
         /// <param name="mode">Indicates whether the <c>DeflateStream</c> will compress or decompress.</param>
         /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public DeflateStream(System.IO.Stream stream, CompressionMode mode, CompressionLevel level)
+        public DeflateStream(Stream stream, CompressionMode mode, CompressionLevel level)
             : this(stream, mode, level, false)
         {
         }
@@ -167,9 +112,9 @@ namespace Ionic.Zlib
         /// <remarks>
         ///
         /// <para>
-        ///   This constructor allows the application to request that the underlying stream
+        ///   This constructor allows the application to request that the captive stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the underlying stream is also
+        ///   <c>Close()</c> is called on the stream, the captive stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
         ///   memory stream that will be re-read after compression.  Specify true for
         ///   the <paramref name="leaveOpen"/> parameter to leave the stream open.
@@ -185,7 +130,8 @@ namespace Ionic.Zlib
         /// </remarks>
         ///
         /// <param name="stream">
-        ///   The stream which will be read from or written to.
+        ///   The stream which will be read or written. This is called the
+        ///   "captive" stream in other places in this documentation.
         /// </param>
         ///
         /// <param name="mode">
@@ -194,7 +140,7 @@ namespace Ionic.Zlib
         ///
         /// <param name="leaveOpen">true if the application would like the stream to
         /// remain open after inflation/deflation.</param>
-        public DeflateStream(System.IO.Stream stream, CompressionMode mode, bool leaveOpen)
+        public DeflateStream(Stream stream, CompressionMode mode, bool leaveOpen)
             : this(stream, mode, CompressionLevel.Default, leaveOpen)
         {
         }
@@ -212,67 +158,22 @@ namespace Ionic.Zlib
         /// </para>
         ///
         /// <para>
-        ///   This constructor allows the application to request that the underlying stream
+        ///   This constructor allows the application to request that the captive stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the underlying stream is also
+        ///   <c>Close()</c> is called on the stream, the captive stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
-        ///   <see cref="System.IO.MemoryStream"/> that will be re-read after
+        ///   <see cref="MemoryStream"/> that will be re-read after
         ///   compression.  Specify true for the <paramref name="leaveOpen"/> parameter
         ///   to leave the stream open.
         /// </para>
         ///
         /// </remarks>
-        ///
-        /// <example>
-        ///
-        ///   This example shows how to use a <c>DeflateStream</c> to compress data from
-        ///   a file, and store the compressed data into another file.
-        ///
-        /// <code>
-        /// using (var output = System.IO.File.Create(fileToCompress + ".deflated"))
-        /// {
-        ///     using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        ///     {
-        ///         using (Stream compressor = new DeflateStream(output, CompressionMode.Compress, CompressionLevel.BestCompression, true))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n= -1;
-        ///             while (n != 0)
-        ///             {
-        ///                 if (n &gt; 0)
-        ///                     compressor.Write(buffer, 0, n);
-        ///                 n= input.Read(buffer, 0, buffer.Length);
-        ///             }
-        ///         }
-        ///     }
-        ///     // can write additional data to the output stream here
-        /// }
-        /// </code>
-        ///
-        /// <code lang="VB">
-        /// Using output As FileStream = File.Create(fileToCompress &amp; ".deflated")
-        ///     Using input As Stream = File.OpenRead(fileToCompress)
-        ///         Using compressor As Stream = New DeflateStream(output, CompressionMode.Compress, CompressionLevel.BestCompression, True)
-        ///             Dim buffer As Byte() = New Byte(4096) {}
-        ///             Dim n As Integer = -1
-        ///             Do While (n &lt;&gt; 0)
-        ///                 If (n &gt; 0) Then
-        ///                     compressor.Write(buffer, 0, n)
-        ///                 End If
-        ///                 n = input.Read(buffer, 0, buffer.Length)
-        ///             Loop
-        ///         End Using
-        ///     End Using
-        ///     ' can write additional data to the output stream here.
-        /// End Using
-        /// </code>
-        /// </example>
         /// <param name="stream">The stream which will be read or written.</param>
         /// <param name="mode">Indicates whether the DeflateStream will compress or decompress.</param>
         /// <param name="leaveOpen">true if the application would like the stream to remain open after inflation/deflation.</param>
         /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public DeflateStream(System.IO.Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen)
-            : base(stream, mode, level, ZlibStreamFlavor.DEFLATE, leaveOpen)
+        public DeflateStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
+            base(stream, mode, level, leaveOpen)
         {
         }
     }

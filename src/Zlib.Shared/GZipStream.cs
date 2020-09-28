@@ -3,40 +3,21 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Text;
 
 namespace Ionic.Zlib
 {
     /// <summary>
-    ///   A class for compressing and decompressing GZIP streams.
+    ///   Stream for compression or decompression using the GZip format.
     /// </summary>
     /// <remarks>
-    ///
+    /// 
     /// <para>
-    ///   The <c>GZipStream</c> is a <see
-    ///   href="http://en.wikipedia.org/wiki/Decorator_pattern">Decorator</see> on a
-    ///   <see cref="Stream"/>. It adds GZIP compression or decompression to any
-    ///   stream.
-    /// </para>
-    ///
-    /// <para>
-    ///   Like the <c>System.IO.Compression.GZipStream</c> in the .NET Base Class Library, the
-    ///   <c>Ionic.Zlib.GZipStream</c> can compress while writing, or decompress while
-    ///   reading, but not vice versa.  The compression method used is GZIP, which is
-    ///   documented in <see href="http://www.ietf.org/rfc/rfc1952.txt">IETF RFC
-    ///   1952</see>, "GZIP file format specification version 4.3".</para>
-    ///
-    /// <para>
-    ///   A <c>GZipStream</c> can be used to decompress data (through <c>Read()</c>) or
-    ///   to compress data (through <c>Write()</c>), but not both.
-    /// </para>
-    ///
-    /// <para>
-    ///   If you wish to use the <c>GZipStream</c> to compress data, you must wrap it
-    ///   around a write-able stream. As you call <c>Write()</c> on the <c>GZipStream</c>, the
-    ///   data will be compressed into the GZIP format.  If you want to decompress data,
-    ///   you must wrap the <c>GZipStream</c> around a readable stream that contains an
-    ///   IETF RFC 1952-compliant stream.  The data will be decompressed as you call
-    ///   <c>Read()</c> on the <c>GZipStream</c>.
+    ///   Like <see cref="System.IO.Compression.GZipStream"/>,
+    ///   <see cref="GZipStream"/> can compress while writing, or decompress while reading.  
+    ///   The compression method used is GZIP, which is documented in 
+    ///   <see href="http://www.ietf.org/rfc/rfc1952.txt">IETF RFC 1952</see>,
+    ///   "GZIP file format specification version 4.3".
     /// </para>
     ///
     /// <para>
@@ -45,21 +26,16 @@ namespace Ionic.Zlib
     ///   representing a single file.
     /// </para>
     ///
-    /// <para>
-    ///   This class is similar to <see cref="ZlibStream"/> and <see cref="DeflateStream"/>.
-    ///   <c>ZlibStream</c> handles RFC1950-compliant streams.  <see cref="DeflateStream"/>
-    ///   handles RFC1951-compliant streams. This class handles RFC1952-compliant streams.
-    /// </para>
-    ///
     /// </remarks>
     ///
     /// <seealso cref="DeflateStream" />
     /// <seealso cref="ZlibStream" />
     public class GZipStream : ZlibBaseStream
     {
-        // GZip format
-        // source: http://tools.ietf.org/html/rfc1952
-        //
+        #region GZip format spec
+
+        // Source: http://tools.ietf.org/html/rfc1952
+
         //  header id:           2 bytes    1F 8B
         //  compress method      1 byte     8= DEFLATE (none other supported)
         //  flag                 1 byte     bitfield (See below)
@@ -85,90 +61,119 @@ namespace Ionic.Zlib
         //                bit 6   reserved
         //                bit 7   reserved
         //
+
         // On consumption:
         // Extra field is a bunch of nonsense and can be safely ignored.
         // Header CRC and OS, likewise.
-        //
-        // on generation:
+
+        // On generation:
         // all optional fields get 0, except for the OS, which gets 255.
-        //
 
+        #endregion
 
+        public static DateTime UnixEpoch { get; } = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        public static Encoding Iso8859Dash1 { get; } = Encoding.GetEncoding("iso-8859-1");
+
+        private int _headerByteCount;
+        private Crc32 _crc;
+
+        private string? _fileName;
+        private string? _comment;
+
+        /// <summary>
+        ///   Gets the position of the stream pointer.
+        /// </summary>
+        ///
+        /// <remarks>
+        ///   Gets the total bytes written out, if used in writing,
+        ///   or the total bytes read in, if used in reading. 
+        ///   The count may refer to compressed bytes or uncompressed bytes,
+        ///   depending on how you've used the stream.
+        /// </remarks>
+        /// <exception cref="NotSupportedException">Setting the value.</exception>
+        public override long Position
+        {
+            get
+            {
+                throw new NotImplementedException();
+
+                //if (IsCompressor)
+                //    return TotalBytesOut + _headerByteCount;
+                //if (IsDecompressor)
+                //    return TotalBytesIn + _headerByteCount;
+                return 0;
+            }
+            set => throw new NotSupportedException();
+        }
+
+        #region GZip properties
 
         /// <summary>
         ///   The comment on the GZIP stream.
         /// </summary>
-        ///
         /// <remarks>
         /// <para>
         ///   The GZIP format allows for each file to optionally have an associated
-        ///   comment stored with the file.  The comment is encoded with the ISO-8859-1
-        ///   code page.  To include a comment in a GZIP stream you create, set this
-        ///   property before calling <c>Write()</c> for the first time on the
-        ///   <c>GZipStream</c>.
+        ///   comment stored with the file.
+        ///   The comment is encoded with the ISO-8859-1 code page.  
+        ///   To include a comment in a GZIP stream you create, 
+        ///   set this property before writing.
         /// </para>
-        ///
         /// <para>
-        ///   When using <c>GZipStream</c> to decompress, you can retrieve this property
-        ///   after the first call to <c>Read()</c>.  If no comment has been set in the
-        ///   GZIP bytestream, the Comment property will return <c>null</c>
-        ///   (<c>Nothing</c> in VB).
+        ///   When compressing, you can set this before the first write.  
+        ///   When decompressing, you can retrieve this after the first read.
         /// </para>
         /// </remarks>
         public string? Comment
         {
-            get => _Comment;
+            get => _comment;
             set
             {
                 AssertNotDisposed();
-                _Comment = value;
+                _comment = value;
             }
         }
 
         /// <summary>
         ///   The FileName for the GZIP stream.
         /// </summary>
-        ///
         /// <remarks>
-        ///
         /// <para>
         ///   The GZIP format optionally allows each file to have an associated
-        ///   filename.  When compressing data (through <c>Write()</c>), set this
-        ///   FileName before calling <c>Write()</c> the first time on the <c>GZipStream</c>.
+        ///   filename. When compressing data, set this property before writing.
         ///   The actual filename is encoded into the GZIP bytestream with the
         ///   ISO-8859-1 code page, according to RFC 1952. It is the application's
         ///   responsibility to insure that the FileName can be encoded and decoded
         ///   correctly with this code page.
         /// </para>
-        ///
         /// <para>
-        ///   When decompressing (through <c>Read()</c>), you can retrieve this value
-        ///   any time after the first <c>Read()</c>.  In the case where there was no filename
-        ///   encoded into the GZIP bytestream, the property will return <c>null</c> (<c>Nothing</c>
-        ///   in VB).
+        ///   When compressing, you can set this before the first write.  
+        ///   When decompressing, you can retrieve this after the first read.
         /// </para>
         /// </remarks>
         public string? FileName
         {
-            get => _FileName;
+            get => _fileName;
             set
             {
                 AssertNotDisposed();
 
-                _FileName = value;
-                if (_FileName == null)
+                _fileName = value;
+                if (_fileName == null)
                     return;
 
-                if (_FileName.IndexOf("/") != -1)
-                    _FileName = _FileName.Replace("/", "\\");
+                var comp = StringComparison.OrdinalIgnoreCase;
 
-                if (_FileName.EndsWith("\\"))
+                if (_fileName.IndexOf("/", comp) != -1)
+                    _fileName = _fileName.Replace("/", "\\", comp);
+
+                if (_fileName.EndsWith("\\", comp))
                     throw new Exception("Illegal filename");
 
-                if (_FileName.IndexOf("\\") != -1)
+                if (_fileName.IndexOf("\\", comp) != -1)
                 {
                     // trim any leading path
-                    _FileName = Path.GetFileName(_FileName);
+                    _fileName = Path.GetFileName(_fileName);
                 }
             }
         }
@@ -176,388 +181,327 @@ namespace Ionic.Zlib
         /// <summary>
         ///   The last modified time for the GZIP stream.
         /// </summary>
-        ///
         /// <remarks>
         ///   GZIP allows the storage of a last modified time with each GZIP entry.
-        ///   When compressing data, you can set this before the first call to
-        ///   <c>Write()</c>.  When decompressing, you can retrieve this value any time
-        ///   after the first call to <c>Read()</c>.
+        ///   When compressing, you can set this before the first write.  
+        ///   When decompressing, you can retrieve this after the first read.
         /// </remarks>
-        public DateTime? LastModified;
-
-        private int _headerByteCount;
-        private bool _firstReadDone;
-        private string? _FileName;
-        private string? _Comment;
-
+        public DateTime? LastModified { get; set; }
 
         /// <summary>
-        ///   Create a <c>GZipStream</c> using the specified <c>CompressionMode</c>.
+        /// The CRC on the GZIP stream.
         /// </summary>
         /// <remarks>
-        ///
-        /// <para>
-        ///   When mode is <c>CompressionMode.Compress</c>, the <c>GZipStream</c> will use the
-        ///   default compression level.
-        /// </para>
-        ///
-        /// <para>
-        ///   As noted in the class documentation, the <c>CompressionMode</c> (Compress
-        ///   or Decompress) also establishes the "direction" of the stream.  A
-        ///   <c>GZipStream</c> with <c>CompressionMode.Compress</c> works only through
-        ///   <c>Write()</c>.  A <c>GZipStream</c> with
-        ///   <c>CompressionMode.Decompress</c> works only through <c>Read()</c>.
-        /// </para>
-        ///
+        /// This is used for internal error checking.
         /// </remarks>
-        ///
-        /// <example>
-        ///   This example shows how to use a GZipStream to compress data.
-        /// <code>
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(outputFile))
-        ///     {
-        ///         using (Stream compressor = new GZipStream(raw, CompressionMode.Compress))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n;
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 compressor.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        /// <code lang="VB">
-        /// Dim outputFile As String = (fileToCompress &amp; ".compressed")
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(outputFile)
-        ///     Using compressor As Stream = New GZipStream(raw, CompressionMode.Compress)
-        ///         Dim buffer As Byte() = New Byte(4096) {}
-        ///         Dim n As Integer = -1
-        ///         Do While (n &lt;&gt; 0)
-        ///             If (n &gt; 0) Then
-        ///                 compressor.Write(buffer, 0, n)
-        ///             End If
-        ///             n = input.Read(buffer, 0, buffer.Length)
-        ///         Loop
-        ///     End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
-        ///
-        /// <example>
-        /// This example shows how to use a GZipStream to uncompress a file.
-        /// <code>
-        /// private void GunZipFile(string filename)
-        /// {
-        ///     if (!filename.EndsWith(".gz))
-        ///         throw new ArgumentException("filename");
-        ///     var DecompressedFile = filename.Substring(0,filename.Length-3);
-        ///     byte[] working = new byte[WORKING_BUFFER_SIZE];
-        ///     int n= 1;
-        ///     using (System.IO.Stream input = System.IO.File.OpenRead(filename))
-        ///     {
-        ///         using (Stream decompressor= new Ionic.Zlib.GZipStream(input, CompressionMode.Decompress, true))
-        ///         {
-        ///             using (var output = System.IO.File.Create(DecompressedFile))
-        ///             {
-        ///                 while (n !=0)
-        ///                 {
-        ///                     n= decompressor.Read(working, 0, working.Length);
-        ///                     if (n > 0)
-        ///                     {
-        ///                         output.Write(working, 0, n);
-        ///                     }
-        ///                 }
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        ///
-        /// <code lang="VB">
-        /// Private Sub GunZipFile(ByVal filename as String)
-        ///     If Not (filename.EndsWith(".gz)) Then
-        ///         Throw New ArgumentException("filename")
-        ///     End If
-        ///     Dim DecompressedFile as String = filename.Substring(0,filename.Length-3)
-        ///     Dim working(WORKING_BUFFER_SIZE) as Byte
-        ///     Dim n As Integer = 1
-        ///     Using input As Stream = File.OpenRead(filename)
-        ///         Using decompressor As Stream = new Ionic.Zlib.GZipStream(input, CompressionMode.Decompress, True)
-        ///             Using output As Stream = File.Create(UncompressedFile)
-        ///                 Do
-        ///                     n= decompressor.Read(working, 0, working.Length)
-        ///                     If n > 0 Then
-        ///                         output.Write(working, 0, n)
-        ///                     End IF
-        ///                 Loop While (n  > 0)
-        ///             End Using
-        ///         End Using
-        ///     End Using
-        /// End Sub
-        /// </code>
-        /// </example>
-        ///
+        public int Crc32 => _crc.Result;
+
+        #endregion
+
+        #region Constructors
+
+        /// <summary>
+        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>,
+        ///   default compression level,
+        ///   and whether the stream should be left open after disposal.
+        /// </summary>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the GZipStream will compress or decompress.</param>
-        public GZipStream(Stream stream, CompressionMode mode)
-            : this(stream, mode, CompressionLevel.Default, false)
-        {
-        }
-
-        /// <summary>
-        ///   Create a <c>GZipStream</c> using the specified <c>CompressionMode</c> and
-        ///   the specified <c>CompressionLevel</c>.
-        /// </summary>
-        /// <remarks>
-        ///
-        /// <para>
-        ///   The <c>CompressionMode</c> (Compress or Decompress) also establishes the
-        ///   "direction" of the stream.  A <c>GZipStream</c> with
-        ///   <c>CompressionMode.Compress</c> works only through <c>Write()</c>.  A
-        ///   <c>GZipStream</c> with <c>CompressionMode.Decompress</c> works only
-        ///   through <c>Read()</c>.
-        /// </para>
-        ///
-        /// </remarks>
-        ///
-        /// <example>
-        ///
-        /// This example shows how to use a <c>GZipStream</c> to compress a file into a .gz file.
-        ///
-        /// <code>
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(fileToCompress + ".gz"))
-        ///     {
-        ///         using (Stream compressor = new GZipStream(raw,
-        ///                                                   CompressionMode.Compress,
-        ///                                                   CompressionLevel.BestCompression))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n;
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 compressor.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        ///
-        /// <code lang="VB">
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(fileToCompress &amp; ".gz")
-        ///         Using compressor As Stream = New GZipStream(raw, CompressionMode.Compress, CompressionLevel.BestCompression)
-        ///             Dim buffer As Byte() = New Byte(4096) {}
-        ///             Dim n As Integer = -1
-        ///             Do While (n &lt;&gt; 0)
-        ///                 If (n &gt; 0) Then
-        ///                     compressor.Write(buffer, 0, n)
-        ///                 End If
-        ///                 n = input.Read(buffer, 0, buffer.Length)
-        ///             Loop
-        ///         End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
-        /// <param name="stream">The stream to be read or written while deflating or inflating.</param>
-        /// <param name="mode">Indicates whether the <c>GZipStream</c> will compress or decompress.</param>
-        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public GZipStream(Stream stream, CompressionMode mode, CompressionLevel level)
-            : this(stream, mode, level, false)
-        {
-        }
-
-        /// <summary>
-        ///   Create a <c>GZipStream</c> using the specified <c>CompressionMode</c>, and
-        ///   explicitly specify whether the stream should be left open after Deflation
-        ///   or Inflation.
-        /// </summary>
-        ///
-        /// <remarks>
-        /// <para>
-        ///   This constructor allows the application to request that the underlying stream
-        ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the underlying stream is also
-        ///   closed. In some cases this is not desired, for example if the stream is a
-        ///   memory stream that will be re-read after compressed data has been written
-        ///   to it.  Specify true for the <paramref name="leaveOpen"/> parameter to leave
-        ///   the stream open.
-        /// </para>
-        ///
-        /// <para>
-        ///   The <see cref="CompressionMode"/> (Compress or Decompress) also
-        ///   establishes the "direction" of the stream.  A <c>GZipStream</c> with
-        ///   <c>CompressionMode.Compress</c> works only through <c>Write()</c>.  A <c>GZipStream</c>
-        ///   with <c>CompressionMode.Decompress</c> works only through <c>Read()</c>.
-        /// </para>
-        ///
-        /// <para>
-        ///   The <c>GZipStream</c> will use the default compression level. If you want
-        ///   to specify the compression level, see <see cref="GZipStream(Stream,
-        ///   CompressionMode, CompressionLevel, bool)"/>.
-        /// </para>
-        ///
-        /// <para>
-        ///   See the other overloads of this constructor for example code.
-        /// </para>
-        ///
-        /// </remarks>
-        ///
-        /// <param name="stream">
-        ///   The stream which will be read from or written to.
-        /// </param>
-        ///
-        /// <param name="mode">Indicates whether the GZipStream will compress or decompress.
-        /// </param>
-        ///
-        /// <param name="leaveOpen">
-        ///   true if the application would like the base stream to remain open after
-        ///   inflation/deflation.
-        /// </param>
+        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
         public GZipStream(Stream stream, CompressionMode mode, bool leaveOpen)
             : this(stream, mode, CompressionLevel.Default, leaveOpen)
         {
         }
 
         /// <summary>
-        ///   Create a <c>GZipStream</c> using the specified <c>CompressionMode</c> and the
-        ///   specified <c>CompressionLevel</c>, and explicitly specify whether the
-        ///   stream should be left open after Deflation or Inflation.
+        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>
+        ///   and default compression level. 
+        ///   The stream will be closed upon disposal.
         /// </summary>
-        ///
-        /// <remarks>
-        ///
-        /// <para>
-        ///   This constructor allows the application to request that the underlying stream
-        ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the underlying stream is also
-        ///   closed. In some cases this is not desired, for example if the stream is a
-        ///   memory stream that will be re-read after compressed data has been written
-        ///   to it.  Specify true for the <paramref name="leaveOpen"/> parameter to
-        ///   leave the stream open.
-        /// </para>
-        ///
-        /// <para>
-        ///   As noted in the class documentation, the <c>CompressionMode</c> (Compress
-        ///   or Decompress) also establishes the "direction" of the stream.  A
-        ///   <c>GZipStream</c> with <c>CompressionMode.Compress</c> works only through
-        ///   <c>Write()</c>.  A <c>GZipStream</c> with <c>CompressionMode.Decompress</c> works only
-        ///   through <c>Read()</c>.
-        /// </para>
-        ///
-        /// </remarks>
-        ///
-        /// <example>
-        ///   This example shows how to use a <c>GZipStream</c> to compress data.
-        /// <code>
-        /// using (System.IO.Stream input = System.IO.File.OpenRead(fileToCompress))
-        /// {
-        ///     using (var raw = System.IO.File.Create(outputFile))
-        ///     {
-        ///         using (Stream compressor = new GZipStream(raw, CompressionMode.Compress, CompressionLevel.BestCompression, true))
-        ///         {
-        ///             byte[] buffer = new byte[WORKING_BUFFER_SIZE];
-        ///             int n;
-        ///             while ((n= input.Read(buffer, 0, buffer.Length)) != 0)
-        ///             {
-        ///                 compressor.Write(buffer, 0, n);
-        ///             }
-        ///         }
-        ///     }
-        /// }
-        /// </code>
-        /// <code lang="VB">
-        /// Dim outputFile As String = (fileToCompress &amp; ".compressed")
-        /// Using input As Stream = File.OpenRead(fileToCompress)
-        ///     Using raw As FileStream = File.Create(outputFile)
-        ///     Using compressor As Stream = New GZipStream(raw, CompressionMode.Compress, CompressionLevel.BestCompression, True)
-        ///         Dim buffer As Byte() = New Byte(4096) {}
-        ///         Dim n As Integer = -1
-        ///         Do While (n &lt;&gt; 0)
-        ///             If (n &gt; 0) Then
-        ///                 compressor.Write(buffer, 0, n)
-        ///             End If
-        ///             n = input.Read(buffer, 0, buffer.Length)
-        ///         Loop
-        ///     End Using
-        ///     End Using
-        /// End Using
-        /// </code>
-        /// </example>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the GZipStream will compress or decompress.</param>
-        /// <param name="leaveOpen">true if the application would like the stream to remain open after inflation/deflation.</param>
+        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
+        public GZipStream(Stream stream, CompressionMode mode)
+            : this(stream, mode, false)
+        {
+        }
+
+        /// <summary>
+        ///   Create a compressor <see cref="GZipStream"/> using the specified <see cref="CompressionLevel"/>,
+        ///   and whether the stream should be left open after disposal.
+        /// </summary>
+        /// <param name="stream">The stream which will be read or written.</param>
+        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
+        public GZipStream(Stream stream, CompressionLevel level, bool leaveOpen)
+            : this(stream, CompressionMode.Compress, level, leaveOpen)
+        {
+        }
+
+        /// <summary>
+        ///   Create a compressor <see cref="GZipStream"/> using the specified <see cref="CompressionLevel"/>.
+        ///   The stream will be closed upon disposal.
+        /// </summary>
+        /// <param name="stream">The stream to write to while deflating.</param>
+        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
+        public GZipStream(Stream stream, CompressionLevel level)
+            : this(stream, level, false)
+        {
+        }
+
+        /// <summary>
+        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>,
+        ///   <see cref="CompressionLevel"/>,
+        ///   and whether the stream should be left open after disposal.
+        /// </summary>
+        /// <param name="stream">The stream which will be read or written.</param>
+        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
         /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
         public GZipStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
-            base(stream, mode, level, ZlibStreamFlavor.GZIP, leaveOpen)
+            base(stream, mode, level, leaveOpen)
         {
+            _crc = new Crc32();
         }
 
-        #region Stream methods
-
-        public override int Read(Span<byte> buffer)
-        {
-            int n = base.Read(buffer);
-
-            if (!_firstReadDone)
-            {
-                _firstReadDone = true;
-                FileName = _GzipFileName;
-                Comment = _GzipComment;
-            }
-            return n;
-        }
+        #endregion
 
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            if (StreamMode == ZlibStreamMode.Undefined)
-            {
-                //Console.WriteLine("GZipStream: First write");
-                if (IsCompressor)
-                {
-                    // first write in compression, therefore, emit the GZIP header
-                    _headerByteCount = EmitHeader();
-                }
-                else
-                {
-                    throw new InvalidOperationException();
-                }
-            }
+            // calculate the CRC on the uncompressed data (before writing)
+            _crc.Slurp(buffer);
 
             base.Write(buffer);
         }
-        #endregion
 
+        public override int Read(Span<byte> buffer)
+        {
+            int read = base.Read(buffer);
 
-        internal static readonly DateTime _unixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        internal static readonly System.Text.Encoding iso8859dash1 = System.Text.Encoding.GetEncoding("iso-8859-1");
+            // calculate CRC after reading
+            _crc.Slurp(buffer.Slice(0, read));
+
+            return read;
+        }
+
+        protected override bool WriteDone(int bytesIn, int bytesOut)
+        {
+            // If GZIP and de-compress, we're done when 8 bytes remain.
+            if (!IsCompressor)
+                return bytesIn == 8 && bytesOut != 0;
+
+            return base.WriteDone(bytesIn, bytesOut);
+        }
+
+        protected override void FirstWrite()
+        {
+            if (!IsCompressor)
+                throw new InvalidOperationException();
+
+            // first write in compression, therefore, emit the GZIP header
+            _headerByteCount = EmitHeader();
+        }
+
+        protected override bool FirstRead()
+        {
+            if (!IsDecompressor)
+                throw new InvalidOperationException();
+
+            _headerByteCount = ReadAndValidateGzipHeader();
+            if (_headerByteCount == 0)
+                return false;
+
+            return true;
+        }
+
+        protected override void PostWriteFinish()
+        {
+            if (!IsCompressor)
+                throw new ZlibException("Writing with decompression is not supported.");
+
+            // Emit the GZIP trailer: CRC32 and  size mod 2^32
+
+            Span<byte> tmp = stackalloc byte[8];
+            int c1 = _crc.Result;
+            int c2 = (int)(_crc.BytesProcessed & 0x00000000FFFFFFFF);
+
+            BinaryPrimitives.WriteInt32LittleEndian(tmp, c1);
+            BinaryPrimitives.WriteInt32LittleEndian(tmp.Slice(4), c2);
+            BaseStream.Write(tmp);
+        }
+
+        protected override void PostReadFinish(ReadOnlySpan<byte> input)
+        {
+            if (!IsDecompressor)
+                throw new ZlibException("Reading with compression is not supported.");
+
+            // handle edge case (decompress empty stream)
+            if (TotalBytesOut == 0)
+                return;
+
+            // Read and potentially verify the GZIP trailer:
+            // CRC32 and size mod 2^32
+            Span<byte> trailer = stackalloc byte[8];
+
+            if (input.Length < 8)
+            {
+                // Make sure we have read to the end of the stream
+                input.CopyTo(trailer);
+                int bytesNeeded = 8 - input.Length;
+
+                Span<byte> toFill = trailer.Slice(input.Length, bytesNeeded);
+                do
+                {
+                    int bytesRead = BaseStream.Read(toFill);
+                    if (bytesRead == 0)
+                        break;
+                    toFill = toFill.Slice(bytesRead);
+                }
+                while (toFill.Length > 0);
+
+                if (toFill.Length > 0)
+                {
+                    throw new ZlibException(string.Format(
+                        "Missing or incomplete GZIP trailer. Expected 8 bytes, missing {0}.",
+                        toFill.Length));
+                }
+            }
+            else
+            {
+                input.Slice(0, trailer.Length).CopyTo(trailer);
+            }
+
+            int crc32_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer);
+            int crc32_actual = _crc.Result;
+            int isize_expected = BinaryPrimitives.ReadInt32LittleEndian(trailer.Slice(4));
+            int isize_actual = (int)(TotalBytesOut & 0x00000000FFFFFFFF);
+
+            if (crc32_actual != crc32_expected)
+                throw new ZlibException(
+                    string.Format(
+                        "Bad CRC32 in GZIP trailer. (actual({0:X8})!=expected({1:X8}))",
+                        crc32_actual, crc32_expected));
+
+            if (isize_actual != isize_expected)
+                throw new ZlibException(
+                    string.Format(
+                        "Bad size in GZIP trailer. (actual({0})!=expected({1}))",
+                        isize_actual, isize_expected));
+        }
+
+        private int ReadAndValidateGzipHeader()
+        {
+            int totalBytesRead = 0;
+            Span<byte> header = stackalloc byte[10];
+
+            Span<byte> headerSlice = header;
+            while (headerSlice.Length > 0)
+            {
+                int read = BaseStream.Read(headerSlice);
+                if (read == 0)
+                    break;
+
+                headerSlice = headerSlice.Slice(read);
+                totalBytesRead += read;
+            }
+
+            if (headerSlice.Length == header.Length)
+                return 0; // nothing was read
+
+            if (headerSlice.Length != 0)
+                throw new EndOfStreamException("Not enough bytes to form a valid GZIP header.");
+
+            if (header[0] != 0x1F || header[1] != 0x8B || header[2] != 8)
+                throw new ZlibException("Bad GZIP header.");
+
+            int timet = BinaryPrimitives.ReadInt32LittleEndian(header.Slice(4));
+            LastModified = UnixEpoch.AddSeconds(timet);
+
+            if ((header[3] & 0x04) == 0x04)
+            {
+                // read and discard extra field
+
+                Span<byte> extraLengthSlice = header.Slice(0, sizeof(short));
+                while (extraLengthSlice.Length > 0)
+                {
+                    int read = BaseStream.Read(extraLengthSlice);
+                    if (read == 0)
+                        break;
+
+                    extraLengthSlice = extraLengthSlice.Slice(read);
+                    totalBytesRead += read;
+                }
+
+                int extraLength = -1;
+                if (extraLengthSlice.Length == 0) // skip if length wasn't fully read
+                {
+                    extraLength = BinaryPrimitives.ReadInt16LittleEndian(header);
+                    Span<byte> skipBuffer = stackalloc byte[Math.Min(1024, extraLength)];
+                    while (extraLength > 0)
+                    {
+                        int toSkip = Math.Min(skipBuffer.Length, extraLength);
+                        int read = BaseStream.Read(skipBuffer.Slice(0, toSkip));
+                        if (read == 0)
+                            break;
+
+                        extraLength -= read;
+                        totalBytesRead += read;
+                    }
+                }
+
+                if (extraLength != 0)
+                    throw new EndOfStreamException("Unexpected end-of-file reading GZIP header.");
+            }
+
+            if ((header[3] & 0x08) == 0x08)
+                _fileName = ReadZeroTerminatedString();
+
+            if ((header[3] & 0x10) == 0x010)
+                _comment = ReadZeroTerminatedString();
+
+            if ((header[3] & 0x02) == 0x02)
+                Read(stackalloc byte[1]); // CRC16, ignore
+
+            return totalBytesRead;
+        }
+
+        private string ReadZeroTerminatedString()
+        {
+            var list = new System.Collections.Generic.List<byte>();
+            while (true)
+            {
+                int n = BaseStream.ReadByte();
+                if (n == -1)
+                    throw new EndOfStreamException("Unexpected EOF reading GZIP header.");
+
+                if (n == 0)
+                    break;
+
+                list.Add((byte)n);
+            }
+
+            byte[] a = list.ToArray();
+            return Iso8859Dash1.GetString(a, 0, a.Length);
+        }
 
         private int EmitHeader()
         {
-            byte[]? commentBytes = (Comment == null) ? null : iso8859dash1.GetBytes(Comment);
-            byte[]? filenameBytes = (FileName == null) ? null : iso8859dash1.GetBytes(FileName);
+            // TODO: write strings to stackalloced buffer directly
+
+            byte[]? commentBytes = (Comment == null) ? null : Iso8859Dash1.GetBytes(Comment);
+            byte[]? filenameBytes = (FileName == null) ? null : Iso8859Dash1.GetBytes(FileName);
 
             int cbLength = (commentBytes == null) ? 0 : commentBytes.Length + 1;
             int fnLength = (filenameBytes == null) ? 0 : filenameBytes.Length + 1;
 
             int bufferLength = 10 + cbLength + fnLength;
-            Span<byte> header = bufferLength <= 4096
+            var header = bufferLength <= 4096 
                 ? stackalloc byte[bufferLength] : new byte[bufferLength];
-
             int i = 0;
+
             // ID
             header[i++] = 0x1F;
             header[i++] = 0x8B;
 
-            // TODO: flags enum
             // compression method
             header[i++] = 8;
             byte flag = 0;
@@ -572,16 +516,15 @@ namespace Ionic.Zlib
             // mtime
             if (!LastModified.HasValue)
                 LastModified = DateTime.Now;
-            TimeSpan delta = LastModified.Value - _unixEpoch;
+            TimeSpan delta = LastModified.Value - UnixEpoch;
             int timet = (int)delta.TotalSeconds;
             BinaryPrimitives.WriteInt32LittleEndian(header.Slice(i), timet);
             i += 4;
 
             // xflg
-            header[i++] = 0;    // flags are unused
-
+            header[i++] = 0; // extra flags are unused
             // OS
-            header[i++] = 0xff; // 0xFF == unspecified
+            header[i++] = 0xff; // 0xff == unspecified
 
             // extra field length - only if FEXTRA is set, which it is not.
             //header[i++]= 0;
