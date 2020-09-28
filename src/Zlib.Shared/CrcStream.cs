@@ -1,6 +1,7 @@
 ﻿// See the LICENSE file for license details.
 
 using System;
+using System.IO;
 
 namespace Ionic
 {
@@ -11,26 +12,22 @@ namespace Ionic
     /// This class can be used to verify the CRC of data when
     /// reading from a stream, or to calculate a CRC when writing to a stream.
     /// </remarks>
-    public class CrcCalculatorStream : System.IO.Stream
+    public class CrcStream : Stream
     {
-        private const long UnsetLengthLimit = -99;
-        private readonly System.IO.Stream _innerStream;
+        private readonly Stream _innerStream;
         private readonly Crc32 _crc32;
-        private readonly long _lengthLimit = UnsetLengthLimit;
+        private readonly long? _lengthLimit;
 
         /// <summary>
         /// The default constructor.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     Instances returned from this constructor will leave the underlying
-        ///     stream open upon Close().  The stream uses the default CRC32
-        ///     algorithm, which implies a polynomial of 0xEDB88320.
-        ///   </para>
+        ///   Instances returned from this constructor will leave the underlying
+        ///   stream open upon Close().  The stream uses the default CRC32
+        ///   algorithm, which implies a polynomial of 0xEDB88320.
         /// </remarks>
         /// <param name="stream">The underlying stream</param>
-        public CrcCalculatorStream(System.IO.Stream stream)
-            : this(true, UnsetLengthLimit, stream, null)
+        public CrcStream(Stream stream) : this(stream, false)
         {
         }
 
@@ -39,40 +36,28 @@ namespace Ionic
         ///   underlying stream at close.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     The stream uses the default CRC32 algorithm, which implies a
-        ///     polynomial of 0xEDB88320.
-        ///   </para>
+        ///   The stream uses the default CRC32 algorithm, which implies a
+        ///   polynomial of 0xEDB88320.
         /// </remarks>
         /// <param name="stream">The underlying stream</param>
         /// <param name="leaveOpen">true to leave the underlying stream
         /// open upon close of the <c>CrcCalculatorStream</c>; false otherwise.</param>
-        public CrcCalculatorStream(System.IO.Stream stream, bool leaveOpen)
-            : this(leaveOpen, UnsetLengthLimit, stream, null)
+        public CrcStream(Stream stream, bool leaveOpen) : this(stream, leaveOpen, null)
         {
         }
 
         /// <summary>
         ///   A constructor allowing the specification of the length of the stream
-        ///   to read.
+        ///   to read. The stream is closed upon disposal.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     The stream uses the default CRC32 algorithm, which implies a
-        ///     polynomial of 0xEDB88320.
-        ///   </para>
-        ///   <para>
-        ///     Instances returned from this constructor will leave the underlying
-        ///     stream open upon Close().
-        ///   </para>
+        ///   The stream uses the default CRC32 algorithm, which implies a
+        ///   polynomial of 0xEDB88320.
         /// </remarks>
         /// <param name="stream">The underlying stream</param>
         /// <param name="length">The length of the stream to slurp</param>
-        public CrcCalculatorStream(System.IO.Stream stream, long length)
-            : this(true, length, stream, null)
+        public CrcStream(Stream stream, long? length) : this(stream, false, length)
         {
-            if (length < 0)
-                throw new ArgumentException(null, nameof(length));
         }
 
         /// <summary>
@@ -81,20 +66,16 @@ namespace Ionic
         ///   Close().
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     The stream uses the default CRC32 algorithm, which implies a
-        ///     polynomial of 0xEDB88320.
-        ///   </para>
+        ///   The stream uses the default CRC32 algorithm, which implies a
+        ///   polynomial of 0xEDB88320.
         /// </remarks>
         /// <param name="stream">The underlying stream</param>
-        /// <param name="length">The length of the stream to slurp</param>
         /// <param name="leaveOpen">true to leave the underlying stream
         /// open upon close of the <c>CrcCalculatorStream</c>; false otherwise.</param>
-        public CrcCalculatorStream(System.IO.Stream stream, long length, bool leaveOpen)
-            : this(leaveOpen, length, stream, null)
+        /// <param name="length">The length of the stream to slurp</param>
+        public CrcStream(Stream stream, bool leaveOpen, long? length)
+            : this(stream, leaveOpen, length, null)
         {
-            if (length < 0)
-                throw new ArgumentException(null, nameof(length));
         }
 
         /// <summary>
@@ -103,69 +84,50 @@ namespace Ionic
         ///   Close(), and the CRC32 instance to use.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     The stream uses the specified CRC32 instance, which allows the
-        ///     application to specify how the CRC gets calculated.
-        ///   </para>
+        ///   The stream uses the specified CRC32 instance, which allows the
+        ///   application to specify how the CRC gets calculated.
         /// </remarks>
         /// <param name="stream">The underlying stream</param>
-        /// <param name="length">The length of the stream to slurp</param>
         /// <param name="leaveOpen">true to leave the underlying stream
         /// open upon close of the <c>CrcCalculatorStream</c>; false otherwise.</param>
+        /// <param name="length">The length of the stream to slurp</param>
         /// <param name="crc32">the CRC32 instance to use to calculate the CRC32</param>
-        public CrcCalculatorStream(System.IO.Stream stream, long length, bool leaveOpen, Crc32 crc32)
-            : this(leaveOpen, length, stream, crc32)
+        public CrcStream(Stream stream, bool leaveOpen, long? length, Crc32? crc32)
         {
-            if (length < 0)
-                throw new ArgumentException(null, nameof(length));
-        }
+            if (length.HasValue && length.GetValueOrDefault() <= 0)
+                throw new ArgumentOutOfRangeException(nameof(length));
 
-
-        // This ctor is private - no validation except null is done here.
-        // This is to allow the use
-        // of a (specific) negative value for the _lengthLimit, to indicate that there
-        // is no length set.  So we validate the length limit in those ctors that use an
-        // explicit param, otherwise we don't validate, because it could be our special
-        // value.
-        private CrcCalculatorStream(bool leaveOpen, long length, System.IO.Stream stream, Crc32 crc32)
-        {
             _innerStream = stream ?? throw new ArgumentNullException(nameof(stream));
             _crc32 = crc32 ?? new Crc32();
             _lengthLimit = length;
             LeaveOpen = leaveOpen;
         }
 
-
         /// <summary>
         ///   Gets the total number of bytes run through the CRC32 calculator.
         /// </summary>
-        ///
         /// <remarks>
         ///   This is either the total number of bytes read, or the total number of
         ///   bytes written, depending on the direction of this stream.
         /// </remarks>
-        public long TotalBytesSlurped => _crc32.BytesProcessed;
+        public long BytesProcessed => _crc32.BytesProcessed;
 
         /// <summary>
-        ///   Provides the current CRC for all blocks slurped in.
+        ///   Provides the current CRC32 for all blocks slurped in.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     The running total of the CRC is kept as data is written or read
-        ///     through the stream.  read this property after all reads or writes to
-        ///     get an accurate CRC for the entire stream.
-        ///   </para>
+        ///   The running total of the CRC is kept as data is written or read
+        ///   through the stream.  read this property after all reads or writes to
+        ///   get an accurate CRC for the entire stream.
         /// </remarks>
-        public int Crc => _crc32.Result;
+        public int CrcChecksum => _crc32.Result;
 
         /// <summary>
         ///   Indicates whether the underlying stream will be left open when the
         ///   <c>CrcCalculatorStream</c> is Closed.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     Set this at any point before calling <see cref="Close()"/>.
-        ///   </para>
+        ///   Set this at any point before calling <see cref="Stream.Dispose())"/>.
         /// </remarks>
         public bool LeaveOpen { get; set; }
 
@@ -184,15 +146,17 @@ namespace Ionic
             // calling ReadToEnd() on it, We can "over-read" the zip data and get a
             // corrupt string.  The length limits that, prevents that problem.
 
-            if (_lengthLimit != UnsetLengthLimit)
+            if (_lengthLimit.HasValue)
             {
-                if (_crc32.BytesProcessed >= _lengthLimit)
+                long limit = _lengthLimit.GetValueOrDefault();
+                if (_crc32.BytesProcessed >= limit)
                     return 0; // EOF
 
-                long bytesRemaining = _lengthLimit - _crc32.BytesProcessed;
+                int bytesRemaining = (int)(limit - _crc32.BytesProcessed);
                 if (bytesRemaining < buffer.Length)
-                    buffer = buffer.Slice(0, (int)bytesRemaining);
+                    buffer = buffer.Slice(0, bytesRemaining);
             }
+
             int n = _innerStream.Read(buffer);
             _crc32.Slurp(buffer.Slice(0, n));
             return n;
@@ -240,9 +204,7 @@ namespace Ionic
         ///   Indicates whether the stream supports seeking.
         /// </summary>
         /// <remarks>
-        ///   <para>
-        ///     Always returns false.
-        ///   </para>
+        ///   Always returns false.
         /// </remarks>
         public override bool CanSeek => false;
 
@@ -260,47 +222,38 @@ namespace Ionic
         }
 
         /// <summary>
-        ///   Returns the length of the underlying stream.
+        ///   Returns the length of the underlying stream or the length limit.
         /// </summary>
         public override long Length
         {
             get
             {
-                if (_lengthLimit == UnsetLengthLimit)
-                    return _innerStream.Length;
-                else
-                    return _lengthLimit;
+                if (_lengthLimit.HasValue)
+                    return _lengthLimit.GetValueOrDefault();
+                return _innerStream.Length;
             }
         }
 
         /// <summary>
         ///   The getter for this property returns the total bytes read.
-        ///   If you use the setter, it will throw
-        /// <see cref="NotSupportedException"/>.
+        ///   If you use the setter, it will throw <see cref="NotSupportedException"/>.
         /// </summary>
         public override long Position
         {
             get => _crc32.BytesProcessed;
             set => throw new NotSupportedException();
         }
-
         /// <summary>
-        /// Seeking is not supported on this stream. This method always throws
-        /// <see cref="NotSupportedException"/>
         /// </summary>
-        /// <param name="offset">N/A</param>
-        /// <param name="origin">N/A</param>
-        /// <returns>N/A</returns>
-        public override long Seek(long offset, System.IO.SeekOrigin origin)
+        /// <exception cref="NotSupportedException"></exception
+        public override long Seek(long offset, SeekOrigin origin)
         {
             throw new NotSupportedException();
         }
 
         /// <summary>
-        /// This method always throws
-        /// <see cref="NotSupportedException"/>
         /// </summary>
-        /// <param name="value">N/A</param>
+        /// <exception cref="NotSupportedException"></exception>
         public override void SetLength(long value)
         {
             throw new NotSupportedException();

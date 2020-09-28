@@ -328,12 +328,12 @@ I have a dream that one day every valley shall be exalted, and every hill and mo
         public static int DoCrc(string filename)
         {
             using Stream a = File.OpenRead(filename);
-            using var crc = new CrcCalculatorStream(a);
+            using var crc = new CrcStream(a);
             byte[] working = new byte[WORKING_BUFFER_SIZE];
             int n = -1;
             while (n != 0)
                 n = crc.Read(working, 0, working.Length);
-            return crc.Crc;
+            return crc.CrcChecksum;
         }
 
 

@@ -184,7 +184,10 @@ namespace Ionic.Zlib
                 throw new ZlibException("You may not call InitializeInflate() after calling InitializeDeflate().");
 
             WindowBits = windowBits;
-            inflater = new Inflater(expectRfc1950Header);
+            inflater = new Inflater
+            {
+                HandleRfc1950HeaderBytes = expectRfc1950Header
+            };
             inflater.Initialize(windowBits);
         }
 
@@ -252,16 +255,13 @@ namespace Ionic.Zlib
         /// <param name="flush">The flush to use when inflating.</param>
         /// <returns>Z_OK if everything goes well.</returns>
         public (ZlibCode Code, string? Message) Inflate(
-            ZlibFlushType flush, ReadOnlySpan<byte> input, Span<byte> output, 
+            ZlibFlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
             out int consumed, out int written)
         {
             if (inflater == null)
                 throw new ZlibException("No Inflate State!");
 
-            ZlibCode code = inflater.Inflate(
-                flush, input, output, out consumed, out written, out string? message);
-
-            return (code, message);
+            return inflater.Inflate(flush, input, output, out consumed, out written);
         }
 
 

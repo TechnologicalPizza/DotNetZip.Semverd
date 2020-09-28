@@ -201,7 +201,7 @@ namespace Ionic.Zlib
         public bool WantRfc1950HeaderBytes { get; set; } = true;
         public int AdlerChecksum => (int)_adler32;
 
-        internal Deflater()
+        public Deflater()
         {
             dyn_ltree = new short[HEAP_SIZE * 2];
             dyn_dtree = new short[(2 * DeflateConstants.D_CODES + 1) * 2]; // distance tree
@@ -1439,22 +1439,22 @@ namespace Ionic.Zlib
         }
 
 
-        internal void Initialize(CompressionLevel level)
+        public void Initialize(CompressionLevel level)
         {
             Initialize(level, ZlibConstants.DefaultWindowBits);
         }
 
-        internal void Initialize(CompressionLevel level, int bits)
+        public void Initialize(CompressionLevel level, int bits)
         {
             Initialize(level, bits, MEM_LEVEL_DEFAULT, CompressionStrategy.Default);
         }
 
-        internal void Initialize(CompressionLevel level, int bits, CompressionStrategy compressionStrategy)
+        public void Initialize(CompressionLevel level, int bits, CompressionStrategy compressionStrategy)
         {
             Initialize(level, bits, MEM_LEVEL_DEFAULT, compressionStrategy);
         }
 
-        internal void Initialize(
+        public void Initialize(
             CompressionLevel level, int windowBits, int memLevel, CompressionStrategy strategy)
         {
             if (windowBits < 9 || windowBits > 15)
@@ -1518,7 +1518,7 @@ namespace Ionic.Zlib
         }
 
 
-        internal ZlibCode End()
+        public ZlibCode End()
         {
             if (status != INIT_STATE &&
                 status != BUSY_STATE &&
@@ -1589,7 +1589,7 @@ namespace Ionic.Zlib
         }
 
 
-        internal void SetDictionary(ReadOnlySpan<byte> dictionary)
+        public void SetDictionary(ReadOnlySpan<byte> dictionary)
         {
             int length = dictionary.Length;
             int index = 0;
@@ -1656,7 +1656,7 @@ namespace Ionic.Zlib
                 nextPending = 0;
         }
 
-        internal (ZlibCode Code, string? Message) Deflate(
+        public (ZlibCode Code, string? Message) Deflate(
             ZlibFlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
             out int consumed, out int written)
         {

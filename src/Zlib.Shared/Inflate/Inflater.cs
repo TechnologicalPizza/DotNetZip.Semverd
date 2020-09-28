@@ -28,7 +28,7 @@ namespace Ionic.Zlib
 
         internal int _windowBits; // log2(window size)  (8..15, defaults to 15)
 
-        internal InflateBlocks? blocks; // current inflate_blocks state
+        internal InflateBlocks? _blocks; // current inflate_blocks state
 
         public bool HandleRfc1950HeaderBytes { get; set; } = true;
         public int AdlerChecksum => (int)_adler32;
@@ -37,25 +37,20 @@ namespace Ionic.Zlib
         {
         }
 
-        public Inflater(bool expectRfc1950HeaderBytes)
-        {
-            HandleRfc1950HeaderBytes = expectRfc1950HeaderBytes;
-        }
-
-        internal void Reset()
+        public void Reset()
         {
             mode = HandleRfc1950HeaderBytes ? InflaterMode.METHOD : InflaterMode.BLOCKS;
-            blocks.Reset();
+            _blocks.Reset();
         }
 
-        internal void End()
+        public void End()
         {
-            blocks = null;
+            _blocks = null;
         }
 
-        internal void Initialize(int windowBits)
+        public void Initialize(int windowBits = ZlibConstants.DefaultWindowBits)
         {
-            blocks = null;
+            _blocks = null;
 
             // handle undocumented nowrap option (no zlib header or check)
             //nowrap = 0;
@@ -70,19 +65,16 @@ namespace Ionic.Zlib
                 throw new ArgumentOutOfRangeException(nameof(windowBits), "Bad window size.");
             _windowBits = windowBits;
 
-            blocks = new InflateBlocks(
-                this,
-                HandleRfc1950HeaderBytes,
-                1 << windowBits);
+            _blocks = new InflateBlocks(this, 1 << windowBits);
 
             // reset state
             Reset();
         }
 
 
-        internal ZlibCode Inflate(
+        public (ZlibCode Code, string? Message) Inflate(
             ZlibFlushType flush, ReadOnlySpan<byte> input, Span<byte> output,
-            out int consumed, out int written, out string? message)
+            out int consumed, out int written)
         {
             int b;
 
@@ -97,7 +89,7 @@ namespace Ionic.Zlib
 
             consumed = 0;
             written = 0;
-            message = null;
+            string? message = null;
 
             while (true)
             {
@@ -105,7 +97,7 @@ namespace Ionic.Zlib
                 {
                     case InflaterMode.METHOD:
                         if (length == 0)
-                            return r;
+                            return (r, message);
 
                         r = f;
                         length--;
@@ -129,7 +121,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.FLAG:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         b = (input[consumed++]) & 0xff;
@@ -149,7 +141,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.DICT4:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 = (uint)((input[consumed++] << 24) & 0xff000000);
@@ -158,7 +150,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.DICT3:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 += (uint)((input[consumed++] << 16) & 0x00ff0000);
@@ -166,9 +158,8 @@ namespace Ionic.Zlib
                         break;
 
                     case InflaterMode.DICT2:
-
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 += (uint)((input[consumed++] << 8) & 0x0000ff00);
@@ -178,24 +169,24 @@ namespace Ionic.Zlib
 
                     case InflaterMode.DICT1:
                         if (length == 0)
-                            return r;
+                            return (r, message);
 
                         //length--; // unnecessary due to return
                         _expectedAdler32 += (uint)(input[consumed++] & 0x000000ff);
                         _adler32 = _expectedAdler32;
                         mode = InflaterMode.DICT0;
-                        return ZlibCode.NeedDict;
+                        return (ZlibCode.NeedDict, message);
 
 
                     case InflaterMode.DICT0:
                         mode = InflaterMode.BAD;
                         message = "need dictionary";
                         marker = 0; // can try inflateSync
-                        return ZlibCode.StreamError;
+                        return (ZlibCode.StreamError, message);
 
 
                     case InflaterMode.BLOCKS:
-                        r = blocks.Process(
+                        r = _blocks.Process(
                             r, input,
                             ref output, ref consumed, ref length, ref written, out message);
 
@@ -210,21 +201,21 @@ namespace Ionic.Zlib
                             r = f;
 
                         if (r != ZlibCode.StreamEnd)
-                            return r;
+                            return (r, message);
 
                         r = f;
-                        _computedAdler32 = blocks.Reset();
+                        _computedAdler32 = _blocks.Reset();
                         if (!HandleRfc1950HeaderBytes)
                         {
                             mode = InflaterMode.DONE;
-                            return ZlibCode.StreamEnd;
+                            return (ZlibCode.StreamEnd, message);
                         }
                         mode = InflaterMode.CHECK4;
                         break;
 
                     case InflaterMode.CHECK4:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 = (uint)((input[consumed++] << 24) & 0xff000000);
@@ -233,7 +224,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.CHECK3:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 += (uint)((input[consumed++] << 16) & 0x00ff0000);
@@ -242,7 +233,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.CHECK2:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 += (uint)((input[consumed++] << 8) & 0x0000ff00);
@@ -251,7 +242,7 @@ namespace Ionic.Zlib
 
                     case InflaterMode.CHECK1:
                         if (length == 0)
-                            return r;
+                            return (r, message);
                         r = f;
                         length--;
                         _expectedAdler32 += (uint)(input[consumed++] & 0x000000ff);
@@ -263,10 +254,10 @@ namespace Ionic.Zlib
                             break;
                         }
                         mode = InflaterMode.DONE;
-                        return ZlibCode.StreamEnd;
+                        return (ZlibCode.StreamEnd, message);
 
                     case InflaterMode.DONE:
-                        return ZlibCode.StreamEnd;
+                        return (ZlibCode.StreamEnd, message);
 
                     case InflaterMode.BAD:
                         throw new ZlibException(string.Format("Bad state ({0})", message));
@@ -280,9 +271,9 @@ namespace Ionic.Zlib
 
 
 
-        internal ZlibCode SetDictionary(ReadOnlySpan<byte> dictionary, bool unconditional = false)
+        public ZlibCode SetDictionary(ReadOnlySpan<byte> dictionary, bool unconditional = false)
         {
-            if (blocks == null)
+            if (_blocks == null)
                 throw new InvalidOperationException();
 
             // MSZip requires the dictionary to be set unconditionally
@@ -304,12 +295,12 @@ namespace Ionic.Zlib
                 dictionary = dictionary.Slice(index, length);
             }
 
-            blocks.SetDictionary(dictionary);
+            _blocks.SetDictionary(dictionary);
             mode = InflaterMode.BLOCKS;
             return ZlibCode.Ok;
         }
 
-        internal ZlibCode Sync(ReadOnlySpan<byte> input, out int consumed)
+        public ZlibCode Sync(ReadOnlySpan<byte> input, out int consumed)
         {
             // set up
             if (mode != InflaterMode.BAD)
@@ -355,10 +346,10 @@ namespace Ionic.Zlib
         /// </summary>
         internal int SyncPoint()
         {
-            if (blocks == null)
+            if (_blocks == null)
                 throw new InvalidOperationException();
 
-            return blocks.SyncPoint();
+            return _blocks.SyncPoint();
         }
     }
 }
