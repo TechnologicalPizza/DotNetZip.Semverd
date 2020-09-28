@@ -383,9 +383,9 @@ namespace Ionic.Zlib
         ///
         /// <remarks>
         /// <para>
-        ///   This constructor allows the application to request that the captive stream
+        ///   This constructor allows the application to request that the underlying stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
+        ///   <c>Close()</c> is called on the stream, the underlying stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
         ///   memory stream that will be re-read after compressed data has been written
         ///   to it.  Specify true for the <paramref name="leaveOpen"/> parameter to leave
@@ -412,8 +412,7 @@ namespace Ionic.Zlib
         /// </remarks>
         ///
         /// <param name="stream">
-        ///   The stream which will be read or written. This is called the "captive"
-        ///   stream in other places in this documentation.
+        ///   The stream which will be read from or written to.
         /// </param>
         ///
         /// <param name="mode">Indicates whether the GZipStream will compress or decompress.
@@ -437,9 +436,9 @@ namespace Ionic.Zlib
         /// <remarks>
         ///
         /// <para>
-        ///   This constructor allows the application to request that the captive stream
+        ///   This constructor allows the application to request that the underlying stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
+        ///   <c>Close()</c> is called on the stream, the underlying stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
         ///   memory stream that will be re-read after compressed data has been written
         ///   to it.  Specify true for the <paramref name="leaveOpen"/> parameter to

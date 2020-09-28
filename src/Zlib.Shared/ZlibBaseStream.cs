@@ -133,25 +133,16 @@ namespace Ionic.Zlib
         /// <summary>
         /// Indicates whether the stream can be read.
         /// </summary>
-        /// <remarks>
-        /// The return value depends on whether the captive stream supports reading.
-        /// </remarks>
         public override bool CanRead => IsDecompressor && BaseStream.CanRead;
 
         /// <summary>
         /// Indicates whether the stream supports Seek operations.
         /// </summary>
-        /// <remarks>
-        /// Always returns false.
-        /// </remarks>
         public override bool CanSeek => false;
 
         /// <summary>
         /// Indicates whether the stream can be written.
         /// </summary>
-        /// <remarks>
-        /// The return value depends on whether the captive stream supports writing.
-        /// </remarks>
         public override bool CanWrite => IsCompressor && BaseStream.CanWrite;
 
         /// <summary>
@@ -574,7 +565,7 @@ namespace Ionic.Zlib
                 // Here, we check if we have any.
                 if (input.Length == 0 && !nomoreinput)
                 {
-                    // No data available, so try to Read data from the captive stream.
+                    // No data available, so try to Read data from the underlying stream.
 
                     var buf = WorkingBuffer;
                     int n = BaseStream.Read(buf);
@@ -585,7 +576,6 @@ namespace Ionic.Zlib
 
                 }
                 // we have data in InputBuffer; now compress or decompress as appropriate
-
 
                 (code, message) = IsCompressor
                     ? z.Deflate(_flushMode, input.Span, output, out int consumed, out int written)

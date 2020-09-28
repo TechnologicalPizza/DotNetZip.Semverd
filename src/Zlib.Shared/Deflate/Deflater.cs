@@ -1,15 +1,13 @@
 // See the LICENSE file for license details.
 
 using System;
-using System.Runtime.CompilerServices;
 
 namespace Ionic.Zlib
 {
+    using Consts = ZlibConstants;
+
     public sealed class Deflater
     {
-        private const int MEM_LEVEL_MAX = 9;
-        private const int MEM_LEVEL_DEFAULT = 8;
-
         public delegate DeflateBlockState CompressFunc(
             ZlibFlushType flush, ref ReadOnlySpan<byte> input, ref Span<byte> output,
             ref int consumed, ref int written);
@@ -198,7 +196,7 @@ namespace Ionic.Zlib
 
         private bool Rfc1950BytesEmitted;
 
-        public bool WantRfc1950HeaderBytes { get; set; } = true;
+        public bool Rfc1950Compliant { get; private set; }
         public int AdlerChecksum => (int)_adler32;
 
         public Deflater()
@@ -220,7 +218,7 @@ namespace Ionic.Zlib
             if (input.Length == 0)
                 return 0;
 
-            if (WantRfc1950HeaderBytes)
+            if (Rfc1950Compliant)
                 _adler32 = Adler32.Compute(_adler32, input);
 
             input.CopyTo(output);
@@ -537,11 +535,10 @@ namespace Ionic.Zlib
 
         internal void SendBits(int value, int length)
         {
-            int len = length;
-            if (bi_valid > Buf_size - len)
+            if (bi_valid > Buf_size - length)
             {
                 //int val = value;
-                //      bi_buf |= (val << bi_valid);
+                //bi_buf |= (value << bi_valid);
 
                 bi_buf |= (short)((value << bi_valid) & 0xffff);
                 //put_short(bi_buf);
@@ -550,13 +547,13 @@ namespace Ionic.Zlib
 
 
                 bi_buf = (short)((uint)value >> (Buf_size - bi_valid));
-                bi_valid += len - Buf_size;
+                bi_valid += length - Buf_size;
             }
             else
             {
-                // bi_buf |= (value) << bi_valid;
+                //bi_buf |= (value << bi_valid);
                 bi_buf |= (short)((value << bi_valid) & 0xffff);
-                bi_valid += len;
+                bi_valid += length;
             }
         }
 
@@ -1438,38 +1435,31 @@ namespace Ionic.Zlib
             return lookahead;
         }
 
-
-        public void Initialize(CompressionLevel level)
+        public void Setup(
+            CompressionLevel level = CompressionLevel.Default,
+            int windowBits = Consts.DefaultWindowBits,
+            int memoryLevel = Consts.DefaultMemoryLevel,
+            CompressionStrategy strategy = CompressionStrategy.Default,
+            bool rfc1950Compliant = true)
         {
-            Initialize(level, ZlibConstants.DefaultWindowBits);
-        }
-
-        public void Initialize(CompressionLevel level, int bits)
-        {
-            Initialize(level, bits, MEM_LEVEL_DEFAULT, CompressionStrategy.Default);
-        }
-
-        public void Initialize(CompressionLevel level, int bits, CompressionStrategy compressionStrategy)
-        {
-            Initialize(level, bits, MEM_LEVEL_DEFAULT, compressionStrategy);
-        }
-
-        public void Initialize(
-            CompressionLevel level, int windowBits, int memLevel, CompressionStrategy strategy)
-        {
-            if (windowBits < 9 || windowBits > 15)
+            if (windowBits < Consts.MinWindowBits ||
+                windowBits > Consts.MaxWindowBits)
                 throw new ArgumentOutOfRangeException(
-                    nameof(windowBits), "windowBits must be in the range 9..15.");
+                    nameof(windowBits),
+                    $"Must be in the range {Consts.MinWindowBits}..{Consts.MaxWindowBits}.");
 
-            if (memLevel < 1 || memLevel > MEM_LEVEL_MAX)
+            if (memoryLevel < Consts.MinMemoryLevel ||
+                memoryLevel > Consts.MaxMemoryLevel)
                 throw new ArgumentOutOfRangeException(
-                    nameof(memLevel), string.Format("memLevel must be in the range 1.. {0}", MEM_LEVEL_MAX));
+                    nameof(memoryLevel),
+                    $"Must be in the range {Consts.MinMemoryLevel}..{Consts.MaxMemoryLevel}");
 
+            Rfc1950Compliant = rfc1950Compliant;
             w_bits = windowBits;
             w_size = 1 << w_bits;
             w_mask = w_size - 1;
 
-            hash_bits = memLevel + 7;
+            hash_bits = memoryLevel + 7;
             hash_size = 1 << hash_bits;
             hash_mask = hash_size - 1;
             hash_shift = (hash_bits + MIN_MATCH - 1) / MIN_MATCH;
@@ -1479,7 +1469,7 @@ namespace Ionic.Zlib
             head = new short[hash_size];
 
             // for memLevel==8, this will be 16384, 16k
-            lit_bufsize = 1 << (memLevel + 6);
+            lit_bufsize = 1 << (memoryLevel + 6);
 
             // Use a single array as the buffer for data pending compression,
             // the output distance codes, and the output length codes (aka tree).
@@ -1508,8 +1498,8 @@ namespace Ionic.Zlib
 
             Rfc1950BytesEmitted = false;
 
-            status = WantRfc1950HeaderBytes ? INIT_STATE : BUSY_STATE;
-            _adler32 = ZlibConstants.InitialAdler32;
+            status = Rfc1950Compliant ? INIT_STATE : BUSY_STATE;
+            _adler32 = Consts.InitialAdler32;
 
             last_flush = (int)ZlibFlushType.None;
 
@@ -1694,7 +1684,7 @@ namespace Ionic.Zlib
                     pending[pendingCount++] = (byte)((_adler32 & 0x0000FF00) >> 8);
                     pending[pendingCount++] = (byte)(_adler32 & 0x000000FF);
                 }
-                _adler32 = ZlibConstants.InitialAdler32;
+                _adler32 = Consts.InitialAdler32;
             }
 
             consumed = 0;
@@ -1803,7 +1793,7 @@ namespace Ionic.Zlib
             if (flush != ZlibFlushType.Finish)
                 return (ZlibCode.Ok, null);
 
-            if (!WantRfc1950HeaderBytes || Rfc1950BytesEmitted)
+            if (!Rfc1950Compliant || Rfc1950BytesEmitted)
                 return (ZlibCode.StreamEnd, null);
 
             // Write the zlib trailer (adler32)

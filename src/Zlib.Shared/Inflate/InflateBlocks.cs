@@ -40,13 +40,16 @@ namespace Ionic.Zlib
         internal int writeAt;               // window write pointer
         internal uint check;                // check on output
 
-        internal int WindowLength => _window.Length;  // one byte after sliding window
+        public bool Rfc1950Compliant { get; }
+        public int WindowLength => _window.Length;  // one byte after sliding window
 
-        internal InflateBlocks(Inflater inflater, int windowSize)
+        internal InflateBlocks(Inflater inflater, int windowSize, bool rfc1950Compliant)
         {
             _inflater = inflater ?? throw new ArgumentNullException(nameof(inflater));
-            _treeSpace = new int[MANY * 3];
             _window = new byte[windowSize];
+            Rfc1950Compliant = rfc1950Compliant;
+
+            _treeSpace = new int[MANY * 3];
             _mode = InflateBlockMode.TYPE;
 
             Reset();
@@ -61,7 +64,7 @@ namespace Ionic.Zlib
             readAt = 0;
             writeAt = 0;
 
-            if (_inflater.HandleRfc1950HeaderBytes)
+            if (Rfc1950Compliant)
             {
                 check = ZlibConstants.InitialAdler32;
                 _inflater._adler32 = ZlibConstants.InitialAdler32;
@@ -544,7 +547,7 @@ namespace Ionic.Zlib
                     r = ZlibCode.Ok;
 
                 // update check information
-                if (_inflater.HandleRfc1950HeaderBytes)
+                if (Rfc1950Compliant)
                 {
                     check = Adler32.Compute(check, _window.AsSpan(readAt, count));
                     _inflater._adler32 = check;

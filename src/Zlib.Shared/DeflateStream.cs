@@ -44,7 +44,7 @@ namespace Ionic.Zlib
         ///
         /// <remarks>
         ///   When mode is <c>CompressionMode.Compress</c>, the DeflateStream will use
-        ///   the default compression level. The "captive" stream will be closed when
+        ///   the default compression level. The underlying stream will be closed when
         ///   the DeflateStream is closed.
         /// </remarks>
         ///
@@ -101,8 +101,7 @@ namespace Ionic.Zlib
         ///
         /// <para>
         ///   When mode is <c>CompressionMode.Decompress</c>, the level parameter is
-        ///   ignored.  The "captive" stream will be closed when the DeflateStream is
-        ///   closed.
+        ///   ignored.  The underlying stream will be closed when the DeflateStream is closed.
         /// </para>
         ///
         /// </remarks>
@@ -168,9 +167,9 @@ namespace Ionic.Zlib
         /// <remarks>
         ///
         /// <para>
-        ///   This constructor allows the application to request that the captive stream
+        ///   This constructor allows the application to request that the underlying stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
+        ///   <c>Close()</c> is called on the stream, the underlying stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
         ///   memory stream that will be re-read after compression.  Specify true for
         ///   the <paramref name="leaveOpen"/> parameter to leave the stream open.
@@ -186,8 +185,7 @@ namespace Ionic.Zlib
         /// </remarks>
         ///
         /// <param name="stream">
-        ///   The stream which will be read or written. This is called the
-        ///   "captive" stream in other places in this documentation.
+        ///   The stream which will be read from or written to.
         /// </param>
         ///
         /// <param name="mode">
@@ -214,9 +212,9 @@ namespace Ionic.Zlib
         /// </para>
         ///
         /// <para>
-        ///   This constructor allows the application to request that the captive stream
+        ///   This constructor allows the application to request that the underlying stream
         ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
+        ///   <c>Close()</c> is called on the stream, the underlying stream is also
         ///   closed. In some cases this is not desired, for example if the stream is a
         ///   <see cref="System.IO.MemoryStream"/> that will be re-read after
         ///   compression.  Specify true for the <paramref name="leaveOpen"/> parameter

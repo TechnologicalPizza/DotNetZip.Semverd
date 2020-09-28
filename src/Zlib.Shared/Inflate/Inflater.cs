@@ -30,7 +30,7 @@ namespace Ionic.Zlib
 
         internal InflateBlocks? _blocks; // current inflate_blocks state
 
-        public bool HandleRfc1950HeaderBytes { get; set; } = true;
+        public bool Rfc1950Compliant => _blocks?.Rfc1950Compliant ?? false;
         public int AdlerChecksum => (int)_adler32;
 
         public Inflater()
@@ -39,16 +39,13 @@ namespace Ionic.Zlib
 
         public void Reset()
         {
-            mode = HandleRfc1950HeaderBytes ? InflaterMode.METHOD : InflaterMode.BLOCKS;
+            mode = Rfc1950Compliant ? InflaterMode.METHOD : InflaterMode.BLOCKS;
             _blocks.Reset();
         }
 
-        public void End()
-        {
-            _blocks = null;
-        }
-
-        public void Initialize(int windowBits = ZlibConstants.DefaultWindowBits)
+        public void Setup(
+            int windowBits = ZlibConstants.DefaultWindowBits, 
+            bool rfc1950Compliant = true)
         {
             _blocks = null;
 
@@ -65,7 +62,7 @@ namespace Ionic.Zlib
                 throw new ArgumentOutOfRangeException(nameof(windowBits), "Bad window size.");
             _windowBits = windowBits;
 
-            _blocks = new InflateBlocks(this, 1 << windowBits);
+            _blocks = new InflateBlocks(this, 1 << windowBits, rfc1950Compliant);
 
             // reset state
             Reset();
@@ -205,7 +202,7 @@ namespace Ionic.Zlib
 
                         r = f;
                         _computedAdler32 = _blocks.Reset();
-                        if (!HandleRfc1950HeaderBytes)
+                        if (!Rfc1950Compliant)
                         {
                             mode = InflaterMode.DONE;
                             return (ZlibCode.StreamEnd, message);

@@ -170,7 +170,7 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        /// Create a ParallelDeflateOutputStream and specify whether to leave the captive stream open
+        /// Create a ParallelDeflateOutputStream and specify whether to leave the underlying stream open
         /// when the ParallelDeflateOutputStream is closed.
         /// </summary>
         /// <remarks>
@@ -187,7 +187,7 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        /// Create a ParallelDeflateOutputStream and specify whether to leave the captive stream open
+        /// Create a ParallelDeflateOutputStream and specify whether to leave the underlying stream open
         /// when the ParallelDeflateOutputStream is closed.
         /// </summary>
         /// <remarks>
@@ -207,7 +207,7 @@ namespace Ionic.Zlib
         /// <summary>
         /// Create a ParallelDeflateOutputStream using the specified
         /// CompressionLevel and CompressionStrategy, and specifying whether to
-        /// leave the captive stream open when the ParallelDeflateOutputStream is
+        /// leave the underlying stream open when the ParallelDeflateOutputStream is
         /// closed.
         /// </summary>
         /// <remarks>

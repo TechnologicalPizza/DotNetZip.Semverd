@@ -184,11 +184,8 @@ namespace Ionic.Zlib
                 throw new ZlibException("You may not call InitializeInflate() after calling InitializeDeflate().");
 
             WindowBits = windowBits;
-            inflater = new Inflater
-            {
-                HandleRfc1950HeaderBytes = expectRfc1950Header
-            };
-            inflater.Initialize(windowBits);
+            inflater = new Inflater();
+            inflater.Setup(windowBits, expectRfc1950Header);
         }
 
         /// <summary>
@@ -277,7 +274,6 @@ namespace Ionic.Zlib
             if (inflater == null)
                 throw new ZlibException("No Inflate State!");
 
-            inflater.End();
             inflater = null;
         }
 
@@ -413,11 +409,8 @@ namespace Ionic.Zlib
             if (inflater != null)
                 throw new ZlibException("You may not call InitializeDeflate() after calling InitializeInflate().");
 
-            deflater = new Deflater()
-            {
-                WantRfc1950HeaderBytes = wantRfc1950Header
-            };
-            deflater.Initialize(CompressLevel, WindowBits, Strategy);
+            deflater = new Deflater();
+            deflater.Setup(CompressLevel, WindowBits, 8, Strategy, wantRfc1950Header);
         }
 
         /// <summary>
