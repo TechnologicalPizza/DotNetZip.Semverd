@@ -201,19 +201,6 @@ namespace Ionic.Zlib
         #region Constructors
 
         /// <summary>
-        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>,
-        ///   default compression level,
-        ///   and whether the stream should be left open after disposal.
-        /// </summary>
-        /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
-        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
-        public GZipStream(Stream stream, CompressionMode mode, bool leaveOpen)
-            : this(stream, mode, CompressionLevel.Default, leaveOpen)
-        {
-        }
-
-        /// <summary>
         ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>
         ///   and default compression level. 
         ///   The stream will be closed upon disposal.
@@ -226,14 +213,15 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        ///   Create a compressor <see cref="GZipStream"/> using the specified <see cref="CompressionLevel"/>,
+        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>,
+        ///   default compression level,
         ///   and whether the stream should be left open after disposal.
         /// </summary>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
+        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
         /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
-        public GZipStream(Stream stream, CompressionLevel level, bool leaveOpen)
-            : this(stream, CompressionMode.Compress, level, leaveOpen)
+        public GZipStream(Stream stream, CompressionMode mode, bool leaveOpen)
+            : this(stream, mode, CompressionLevel.Default, leaveOpen)
         {
         }
 
@@ -249,15 +237,18 @@ namespace Ionic.Zlib
         }
 
         /// <summary>
-        ///   Create a <see cref="GZipStream"/> using the specified <see cref="CompressionMode"/>,
-        ///   <see cref="CompressionLevel"/>,
+        ///   Create a compressor <see cref="GZipStream"/> using the specified <see cref="CompressionLevel"/>,
         ///   and whether the stream should be left open after disposal.
         /// </summary>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the <see cref="GZipStream"/> will compress or decompress.</param>
-        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
         /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public GZipStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
+        public GZipStream(Stream stream, CompressionLevel level, bool leaveOpen)
+            : this(stream, CompressionMode.Compress, level, leaveOpen)
+        {
+        }
+
+        private GZipStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
             base(stream, mode, level, leaveOpen)
         {
             _crc = new Crc32();

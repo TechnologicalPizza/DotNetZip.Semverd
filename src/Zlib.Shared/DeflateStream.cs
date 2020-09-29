@@ -66,116 +66,57 @@ namespace Ionic.Zlib
             set => throw new NotSupportedException();
         }
 
+        #region Constructors
+
         /// <summary>
-        ///   Create a DeflateStream using the specified CompressionMode.
+        ///   Create a <see cref="DeflateStream"/> using the specified <see cref="CompressionMode"/>
+        ///   and default compression level. 
+        ///   The stream will be closed upon disposal.
         /// </summary>
-        ///
-        /// <remarks>
-        ///   When mode is <c>CompressionMode.Compress</c>, the DeflateStream will use
-        ///   the default compression level. The "captive" stream will be closed when
-        ///   the DeflateStream is closed.
-        /// </remarks>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the DeflateStream will compress or decompress.</param>
+        /// <param name="mode">Indicates whether the <see cref="DeflateStream"/> will compress or decompress.</param>
         public DeflateStream(Stream stream, CompressionMode mode)
-            : this(stream, mode, CompressionLevel.Default, false)
+            : this(stream, mode, false)
         {
         }
 
         /// <summary>
-        /// Create a DeflateStream using the specified CompressionMode and the specified CompressionLevel.
+        ///   Create a <see cref="DeflateStream"/> using the specified <see cref="CompressionMode"/>,
+        ///   default compression level,
+        ///   and whether the stream should be left open after disposal.
         /// </summary>
-        ///
-        /// <remarks>
-        ///
-        /// <para>
-        ///   When mode is <c>CompressionMode.Decompress</c>, the level parameter is
-        ///   ignored.  The "captive" stream will be closed when the DeflateStream is
-        ///   closed.
-        /// </para>
-        ///
-        /// </remarks>
-        /// <param name="stream">The stream to be read or written while deflating or inflating.</param>
-        /// <param name="mode">Indicates whether the <c>DeflateStream</c> will compress or decompress.</param>
-        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public DeflateStream(Stream stream, CompressionMode mode, CompressionLevel level)
-            : this(stream, mode, level, false)
-        {
-        }
-
-        /// <summary>
-        ///   Create a <c>DeflateStream</c> using the specified
-        ///   <c>CompressionMode</c>, and explicitly specify whether the
-        ///   stream should be left open after Deflation or Inflation.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///
-        /// <para>
-        ///   This constructor allows the application to request that the captive stream
-        ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
-        ///   closed. In some cases this is not desired, for example if the stream is a
-        ///   memory stream that will be re-read after compression.  Specify true for
-        ///   the <paramref name="leaveOpen"/> parameter to leave the stream open.
-        /// </para>
-        ///
-        /// <para>
-        ///   The <c>DeflateStream</c> will use the default compression level.
-        /// </para>
-        ///
-        /// <para>
-        ///   See the other overloads of this constructor for example code.
-        /// </para>
-        /// </remarks>
-        ///
-        /// <param name="stream">
-        ///   The stream which will be read or written. This is called the
-        ///   "captive" stream in other places in this documentation.
-        /// </param>
-        ///
-        /// <param name="mode">
-        ///   Indicates whether the <c>DeflateStream</c> will compress or decompress.
-        /// </param>
-        ///
-        /// <param name="leaveOpen">true if the application would like the stream to
-        /// remain open after inflation/deflation.</param>
-        public DeflateStream(Stream stream, CompressionMode mode, bool leaveOpen)
-            : this(stream, mode, CompressionLevel.Default, leaveOpen)
-        {
-        }
-
-        /// <summary>
-        ///   Create a <c>DeflateStream</c> using the specified <c>CompressionMode</c>
-        ///   and the specified <c>CompressionLevel</c>, and explicitly specify whether
-        ///   the stream should be left open after Deflation or Inflation.
-        /// </summary>
-        ///
-        /// <remarks>
-        ///
-        /// <para>
-        ///   When mode is <c>CompressionMode.Decompress</c>, the level parameter is ignored.
-        /// </para>
-        ///
-        /// <para>
-        ///   This constructor allows the application to request that the captive stream
-        ///   remain open after the deflation or inflation occurs.  By default, after
-        ///   <c>Close()</c> is called on the stream, the captive stream is also
-        ///   closed. In some cases this is not desired, for example if the stream is a
-        ///   <see cref="MemoryStream"/> that will be re-read after
-        ///   compression.  Specify true for the <paramref name="leaveOpen"/> parameter
-        ///   to leave the stream open.
-        /// </para>
-        ///
-        /// </remarks>
         /// <param name="stream">The stream which will be read or written.</param>
-        /// <param name="mode">Indicates whether the DeflateStream will compress or decompress.</param>
-        /// <param name="leaveOpen">true if the application would like the stream to remain open after inflation/deflation.</param>
-        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
-        public DeflateStream(Stream stream, CompressionMode mode, CompressionLevel level, bool leaveOpen) :
-            base(stream, mode, level, leaveOpen)
+        /// <param name="mode">Indicates whether the <see cref="DeflateStream"/> will compress or decompress.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
+        public DeflateStream(Stream stream, CompressionMode mode, bool leaveOpen)
+            : base(stream, mode, CompressionLevel.Default, leaveOpen)
         {
         }
+
+        /// <summary>
+        ///   Create a compressor <see cref="DeflateStream"/> using the specified <see cref="CompressionLevel"/>.
+        ///   The stream will be closed upon disposal.
+        /// </summary>
+        /// <param name="stream">The stream to write to while deflating.</param>
+        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
+        public DeflateStream(Stream stream, CompressionLevel level)
+            : this(stream, level, false)
+        {
+        }
+
+        /// <summary>
+        ///   Create a compressor <see cref="DeflateStream"/> using the specified <see cref="CompressionLevel"/>,
+        ///   and whether the stream should be left open after disposal.
+        /// </summary>
+        /// <param name="stream">The stream which will be read or written.</param>
+        /// <param name="level">A tuning knob to trade speed for effectiveness.</param>
+        /// <param name="leaveOpen">Whether to leave <paramref name="stream"/> open after disposal.</param>
+        public DeflateStream(Stream stream, CompressionLevel level, bool leaveOpen)
+            : base(stream, CompressionMode.Compress, level, leaveOpen)
+        {
+        }
+
+        #endregion
     }
 }
 

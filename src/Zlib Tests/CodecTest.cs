@@ -529,7 +529,7 @@ namespace Ionic.Zlib.Tests
 
             // first, compress:
             msSinkCompressed = new MemoryStream();
-            zOut = new ZlibStream(msSinkCompressed, CompressionMode.Compress, CompressionLevel.BestCompression, true);
+            zOut = new ZlibStream(msSinkCompressed, CompressionLevel.BestCompression, true);
             CopyStream(StringToMemoryStream(IhaveaDream), zOut);
             zOut.Close();
 
@@ -555,7 +555,6 @@ namespace Ionic.Zlib.Tests
             var msSinkCompressed = new MemoryStream();
             var zIn = new ZlibStream(
                 StringToMemoryStream(WhatWouldThingsHaveBeenLike),
-                CompressionMode.Compress,
                 CompressionLevel.BestCompression,
                 true);
             CopyStream(zIn, msSinkCompressed);
@@ -757,7 +756,7 @@ namespace Ionic.Zlib.Tests
                 {
                     using var raw = new FileStream(CompressedFile, FileMode.Create);
                     using var compressor = new GZipStream(
-                        raw, CompressionMode.Compress, CompressionLevel.BestCompression, true);
+                        raw, CompressionLevel.BestCompression, true);
 
                     // FileName is optional metadata in the GZip bytestream
                     if (k % 2 == 1)
@@ -852,7 +851,7 @@ namespace Ionic.Zlib.Tests
                 {
                     using var raw = new FileStream(CompressedFile, FileMode.Create);
                     using var compressor = new GZipStream(
-                        raw, CompressionMode.Compress, CompressionLevel.BestCompression, true);
+                        raw, CompressionLevel.BestCompression, true);
 
                     // FileName is optional metadata in the GZip bytestream
                     if (k % 2 == 1)
@@ -1013,7 +1012,7 @@ namespace Ionic.Zlib.Tests
                 }
                 else
                 {
-                    compressor = new DeflateStream(ms, CompressionMode.Compress, levels[k], true);
+                    compressor = new DeflateStream(ms, levels[k], true);
                     TestContext.WriteLine("using level: {0}", levels[k].ToString());
                 }
 
@@ -1073,7 +1072,7 @@ namespace Ionic.Zlib.Tests
                 {
                     case 0:
                         compressor = new DeflateStream(
-                            ms1, CompressionMode.Compress, CompressionLevel.BestCompression, false);
+                            ms1, CompressionLevel.BestCompression, false);
                         break;
                     case 1:
                         compressor = new GZipStream(ms1, CompressionMode.Compress, false);

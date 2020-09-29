@@ -117,8 +117,8 @@ namespace Ionic
         /// </summary>
         /// <remarks>
         ///   The running total of the CRC is kept as data is written or read
-        ///   through the stream.  read this property after all reads or writes to
-        ///   get an accurate CRC for the entire stream.
+        ///   through the stream.  Read this property after all reads or writes to
+        ///   get a checksum for the entire stream.
         /// </remarks>
         public int CrcChecksum => _crc32.Result;
 
