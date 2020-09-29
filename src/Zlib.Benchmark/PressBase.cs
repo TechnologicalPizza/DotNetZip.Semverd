@@ -11,7 +11,7 @@ namespace Zlib.Benchmark
         private byte[] _buffer;
         private byte[] _compressed;
 
-        [Params(1024 * 16, 1024 * 64)]
+        [Params(1024 * 16/*, 1024 * 64*/)]
         public int ByteCount { get; set; }
 
         [Params(CompressionLevel.Fastest/*, CompressionLevel.Optimal*/)]
@@ -22,7 +22,20 @@ namespace Zlib.Benchmark
         {
             _data = new byte[ByteCount];
             _buffer = new byte[ByteCount];
-            new Random(1234).NextBytes(_data);
+
+            var rng = new Random(1234);
+            string bigg = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            string smol = "abcdefghijklmnopqrstuvwxyz";
+            for (int i = 0; i < _data.Length; i++)
+            {
+                string src;
+                if (rng.Next(0, 10) == 0)
+                    src = bigg;
+                else
+                    src = smol;
+
+                _data[i] = (byte)src[rng.Next(src.Length)];
+            }
 
             using var compressed = new MemoryStream();
             using (var compressor = CreateCompressor(compressed))
@@ -35,13 +48,15 @@ namespace Zlib.Benchmark
         public abstract Stream CreateDecompressor(Stream input);
 
         [Benchmark]
-        public void Compress()
+        public long Compress()
         {
-            using var compressor = CreateCompressor(Stream.Null);
-            compressor.Write(_data);
+            var counter = new CounterStream(Stream.Null);
+            using (var compressor = CreateCompressor(counter))
+                compressor.Write(_data);
+            return counter.TotalWrite;
         }
 
-        [Benchmark]
+        //[Benchmark]
         public void Decompress()
         {
             using var decompressor = CreateDecompressor(new MemoryStream(_compressed, 0, _compressed.Length));

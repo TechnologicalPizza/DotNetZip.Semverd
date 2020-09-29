@@ -241,6 +241,11 @@ namespace Ionic.Zlib
             while (!done);
         }
 
+        public override void WriteByte(byte value)
+        {
+            Write(stackalloc byte[] { value });
+        }
+
         public override void Write(byte[] buffer, int offset, int count)
         {
             Write(buffer.AsSpan(offset, count));
@@ -325,14 +330,6 @@ namespace Ionic.Zlib
                 _z.EndInflate();
 
             _z = null!;
-        }
-
-        public override int ReadByte()
-        {
-            Span<byte> buf = stackalloc byte[1];
-            if (Read(buf) == 0)
-                return -1;
-            return buf[0];
         }
 
         protected virtual bool FirstRead()
@@ -440,6 +437,14 @@ namespace Ionic.Zlib
 
             int read = buffer.Length - output.Length;
             return read;
+        }
+
+        public override int ReadByte()
+        {
+            Span<byte> buf = stackalloc byte[1];
+            if (Read(buf) == 0)
+                return -1;
+            return buf[0];
         }
 
         public override int Read(byte[] buffer, int offset, int count)
