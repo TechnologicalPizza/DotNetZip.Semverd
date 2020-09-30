@@ -11,7 +11,7 @@ namespace Zlib.Benchmark
         private byte[] _buffer;
         private byte[] _compressed;
 
-        [Params(1024 * 16/*, 1024 * 64*/)]
+        [Params(/*1024 * 16,*/ 1024 * 64)]
         public int ByteCount { get; set; }
 
         [Params(CompressionLevel.Fastest/*, CompressionLevel.Optimal*/)]

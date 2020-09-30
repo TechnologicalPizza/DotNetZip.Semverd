@@ -7,22 +7,8 @@ namespace Ionic.Zlib
 {
     using Consts = ZlibConstants;
 
-    public sealed class Deflater
+    public sealed unsafe class Deflater
     {
-        public struct BitBuf
-        {
-            /// <summary>
-            /// Output buffer. bits are inserted starting at the bottom (least significant bits).
-            /// </summary>
-            public short buf;
-
-            /// <summary>
-            /// Number of valid bits in bi_buf.  
-            /// All bits above the last valid bit are always zero.
-            /// </summary>
-            public int valid;
-        }
-
         public delegate DeflateBlockState CompressFunc(
             ZlibFlushType flush, ref ReadOnlySpan<byte> input, ref Span<byte> output,
             ref int consumed, ref int written);
@@ -62,7 +48,7 @@ namespace Ionic.Zlib
         private const int Z_ASCII = 1;
         private const int Z_UNKNOWN = 2;
 
-        private const int Buf_size = 8 * 2;
+        private const int BiBufSize = 8 * sizeof(int);
 
         private const int MIN_MATCH = 3;
         private const int MAX_MATCH = 258;
@@ -76,7 +62,7 @@ namespace Ionic.Zlib
         internal int status;       // as the name implies
         internal byte[] _pending;   // output still pending - waiting to be compressed
         internal int nextPending;  // index of next pending byte to output to the stream
-        internal int pendingCount; // number of bytes in the pending buffer
+        internal int _pendingCount; // number of bytes in the pending buffer
         internal uint _adler32;
 
         internal sbyte data_type; // UNKNOWN, BINARY or ASCII
@@ -141,12 +127,12 @@ namespace Ionic.Zlib
         internal CompressionStrategy _compressionStrategy; // favor or force Huffman coding
 
 
-        internal short[] dyn_ltree; // literal and length tree
-        internal short[] dyn_dtree; // distance tree
-        internal short[] bl_tree;   // Huffman tree for bit lengths
+        internal short[] _dyn_ltree; // literal and length tree
+        internal short[] _dyn_dtree; // distance tree
+        internal short[] _bl_tree;   // Huffman tree for bit lengths
 
-        internal DeflateTree treeLiterals = new DeflateTree();   // desc for literal tree
-        internal DeflateTree treeDistances = new DeflateTree();  // desc for distance tree
+        internal DeflateTree _treeLiterals = new DeflateTree();   // desc for literal tree
+        internal DeflateTree _treeDistances = new DeflateTree();  // desc for distance tree
         internal DeflateTree treeBitLengths = new DeflateTree(); // desc for bit length tree
 
         // number of codes at each bit length for an optimal tree
@@ -198,7 +184,16 @@ namespace Ionic.Zlib
         internal int matches;      // number of string matches in current block
         internal int last_eob_len; // bit length of EOB code for last block
 
-        internal BitBuf _bi;
+        /// <summary>
+        /// Output buffer. bits are inserted starting at the bottom (least significant bits).
+        /// </summary>
+        public uint _biBuf;
+
+        /// <summary>
+        /// Number of valid bits in bi_buf.  
+        /// All bits above the last valid bit are always zero.
+        /// </summary>
+        public int _biCount;
 
         private bool Rfc1950BytesEmitted;
 
@@ -207,9 +202,9 @@ namespace Ionic.Zlib
 
         public Deflater()
         {
-            dyn_ltree = new short[HEAP_SIZE * 2];
-            dyn_dtree = new short[(2 * DeflateConstants.D_CODES + 1) * 2]; // distance tree
-            bl_tree = new short[(2 * DeflateConstants.BL_CODES + 1) * 2]; // Huffman tree for bit lengths
+            _dyn_ltree = new short[HEAP_SIZE * 2];
+            _dyn_dtree = new short[(2 * DeflateConstants.D_CODES + 1) * 2]; // distance tree
+            _bl_tree = new short[(2 * DeflateConstants.BL_CODES + 1) * 2]; // Huffman tree for bit lengths
         }
 
         /// <summary>
@@ -257,16 +252,17 @@ namespace Ionic.Zlib
         /// </summary>
         private void InitializeTreeData()
         {
-            treeLiterals.dyn_tree = dyn_ltree;
-            treeLiterals.staticTree = StaticTree.Literals;
+            _treeLiterals.dyn_tree = _dyn_ltree;
+            _treeLiterals.staticTree = StaticTree.Literals;
 
-            treeDistances.dyn_tree = dyn_dtree;
-            treeDistances.staticTree = StaticTree.Distances;
+            _treeDistances.dyn_tree = _dyn_dtree;
+            _treeDistances.staticTree = StaticTree.Distances;
 
-            treeBitLengths.dyn_tree = bl_tree;
+            treeBitLengths.dyn_tree = _bl_tree;
             treeBitLengths.staticTree = StaticTree.BitLengths;
 
-            _bi = default;
+            _biBuf = 0;
+            _biCount = 0;
             last_eob_len = 8; // enough lookahead for inflate
 
             // Initialize the first block of the first file:
@@ -277,13 +273,13 @@ namespace Ionic.Zlib
         {
             // Initialize the trees.
             for (int i = 0; i < DeflateConstants.L_CODES; i++)
-                dyn_ltree[i * 2] = 0;
+                _dyn_ltree[i * 2] = 0;
             for (int i = 0; i < DeflateConstants.D_CODES; i++)
-                dyn_dtree[i * 2] = 0;
+                _dyn_dtree[i * 2] = 0;
             for (int i = 0; i < DeflateConstants.BL_CODES; i++)
-                bl_tree[i * 2] = 0;
+                _bl_tree[i * 2] = 0;
 
-            dyn_ltree[END_BLOCK * 2] = 1;
+            _dyn_ltree[END_BLOCK * 2] = 1;
             opt_len = static_len = 0;
             last_lit = matches = 0;
         }
@@ -357,21 +353,21 @@ namespace Ionic.Zlib
                 }
                 else if (count < min_count)
                 {
-                    bl_tree[curlen * 2] = (short)(bl_tree[curlen * 2] + count);
+                    _bl_tree[curlen * 2] = (short)(_bl_tree[curlen * 2] + count);
                 }
                 else if (curlen != 0)
                 {
                     if (curlen != prevlen)
-                        bl_tree[curlen * 2]++;
-                    bl_tree[DeflateConstants.REP_3_6 * 2]++;
+                        _bl_tree[curlen * 2]++;
+                    _bl_tree[DeflateConstants.REP_3_6 * 2]++;
                 }
                 else if (count <= 10)
                 {
-                    bl_tree[DeflateConstants.REPZ_3_10 * 2]++;
+                    _bl_tree[DeflateConstants.REPZ_3_10 * 2]++;
                 }
                 else
                 {
-                    bl_tree[DeflateConstants.REPZ_11_138 * 2]++;
+                    _bl_tree[DeflateConstants.REPZ_11_138 * 2]++;
                 }
                 count = 0;
                 prevlen = curlen;
@@ -400,8 +396,8 @@ namespace Ionic.Zlib
             int max_blindex; // index of last bit length code of non zero freq
 
             // Determine the bit length frequencies for literal and distance trees
-            ScanTree(dyn_ltree, treeLiterals.max_code);
-            ScanTree(dyn_dtree, treeDistances.max_code);
+            ScanTree(_dyn_ltree, _treeLiterals.max_code);
+            ScanTree(_dyn_dtree, _treeDistances.max_code);
 
             // Build the bit length tree:
             treeBitLengths.BuildTree(this);
@@ -414,7 +410,7 @@ namespace Ionic.Zlib
             var blOrder = DeflateTree.BlOrder;
             for (max_blindex = DeflateConstants.BL_CODES - 1; max_blindex >= 3; max_blindex--)
             {
-                if (bl_tree[blOrder[max_blindex] * 2 + 1] != 0)
+                if (_bl_tree[blOrder[max_blindex] * 2 + 1] != 0)
                     break;
             }
             // Update opt_len to include the bit length tree and counts
@@ -431,24 +427,27 @@ namespace Ionic.Zlib
         /// IN assertion: lcodes >= 257, dcodes >= 1, blcodes >= 4.
         /// </para>
         /// </summary>
-        internal void SendAllTrees(int lcodes, int dcodes, int blcodes, ref BitBuf bi)
+        internal void SendAllTrees(int lcodes, int dcodes, int blcodes, byte* pending)
         {
-            SendBits(lcodes - 257, 5, ref bi); // not +255 as stated in appnote.txt
-            SendBits(dcodes - 1, 5, ref bi);
-            SendBits(blcodes - 4, 4, ref bi); // not -3 as stated in appnote.txt
+            SendBits(lcodes - 257, 5, pending); // not +255 as stated in appnote.txt
+            SendBits(dcodes - 1, 5, pending);
+            SendBits(blcodes - 4, 4, pending); // not -3 as stated in appnote.txt
 
-            var blOrder = DeflateTree.BlOrder.Slice(0, blcodes);
-            for (int rank = 0; rank < blOrder.Length; rank++)
-                SendBits(bl_tree[blOrder[rank] * 2 + 1], 3, ref bi);
+            fixed (short* bltree = _bl_tree)
+            {
+                var blOrder = DeflateTree.BlOrder.Slice(0, blcodes);
+                for (int rank = 0; rank < blOrder.Length; rank++)
+                    SendBits(bltree[blOrder[rank] * 2 + 1], (short)3, pending);
 
-            SendTree(dyn_ltree, lcodes - 1, ref bi); // literal tree
-            SendTree(dyn_dtree, dcodes - 1, ref bi); // distance tree
+                SendTree(_dyn_ltree, lcodes - 1, pending, bltree); // literal tree
+                SendTree(_dyn_dtree, dcodes - 1, pending, bltree); // distance tree
+            }
         }
 
         /// <summary>
         /// Send a literal or distance tree in compressed form, using the codes in bl_tree.
         /// </summary>
-        internal void SendTree(short[] tree, int max_code, ref BitBuf bi)
+        internal void SendTree(short[] tree, int max_code, byte* pending, short* bltree)
         {
             int n;                           // iterates over all tree elements
             int prevlen = -1;              // last emitted length
@@ -476,7 +475,7 @@ namespace Ionic.Zlib
                 {
                     do
                     {
-                        SendCode(curlen, bl_tree, ref bi);
+                        SendCode(curlen, bltree, pending);
                     }
                     while (--count != 0);
                 }
@@ -484,21 +483,21 @@ namespace Ionic.Zlib
                 {
                     if (curlen != prevlen)
                     {
-                        SendCode(curlen, bl_tree, ref bi);
+                        SendCode(curlen, bltree, pending);
                         count--;
                     }
-                    SendCode(DeflateConstants.REP_3_6, bl_tree, ref bi);
-                    SendBits(count - 3, 2, ref bi);
+                    SendCode(DeflateConstants.REP_3_6, bltree, pending);
+                    SendBits(count - 3, 2, pending);
                 }
                 else if (count <= 10)
                 {
-                    SendCode(DeflateConstants.REPZ_3_10, bl_tree, ref bi);
-                    SendBits(count - 3, 3, ref bi);
+                    SendCode(DeflateConstants.REPZ_3_10, bltree, pending);
+                    SendBits(count - 3, 3, pending);
                 }
                 else
                 {
-                    SendCode(DeflateConstants.REPZ_11_138, bl_tree, ref bi);
-                    SendBits(count - 11, 7, ref bi);
+                    SendCode(DeflateConstants.REPZ_11_138, bltree, pending);
+                    SendBits(count - 11, 7, pending);
                 }
                 count = 0;
                 prevlen = curlen;
@@ -526,37 +525,115 @@ namespace Ionic.Zlib
         /// </summary>
         private void PutBytes(byte[] p, int start, int len)
         {
-            Array.Copy(p, start, _pending, pendingCount, len);
-            pendingCount += len;
+            Array.Copy(p, start, _pending, _pendingCount, len);
+            _pendingCount += len;
         }
 
         // TODO: make these static
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void SendCode(int c, short[] tree, ref BitBuf bi)
+        internal void SendCode(int code, short* tree, byte* pending)
         {
-            int c2 = c * 2;
-            SendBits(tree[c2], tree[c2 + 1], ref bi);
+            int c2 = code * 2;
+            SendBits(tree[c2], tree[c2 + 1], pending);
         }
 
-        internal void SendBits(int value, int length, ref BitBuf bi)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SendBits(short value, short length, byte* pending)
         {
-            if (bi.valid > Buf_size - length)
-            {
-                bi.buf |= (short)(value << bi.valid);
-                //put_short(bi_buf);
-                _pending[pendingCount++] = (byte)bi.buf;
-                _pending[pendingCount++] = (byte)(bi.buf >> 8);
+            if (_biCount > BiBufSize - length)
+                BitFlush(pending);
 
-                bi.buf = (short)((uint)value >> (Buf_size - bi.valid));
-                bi.valid += length - Buf_size;
-            }
-            else
+            _biBuf |= (uint)(value << _biCount);
+            _biCount += length;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SendBits(int value, int length, byte* pending)
+        {
+            if (_biCount > BiBufSize - length)
+                BitFlush(pending);
+
+            _biBuf |= (uint)(value << _biCount);
+            _biCount += length;
+        }
+
+        /// <summary>
+        /// Flush the bit buffer, keeping at most 7 bits in it.
+        /// </summary>
+        internal void BitFlush(byte* pending)
+        {
+            int count = _biCount;
+            if (count >= 8)
             {
-                bi.buf |= (short)(value << bi.valid);
-                bi.valid += length;
+                if (count >= 16)
+                {
+                    var buf = _biBuf;
+                    if (count >= 24)
+                    {
+                        if (count == BiBufSize)
+                        {
+                            pending[_pendingCount++] = (byte)buf;
+                            pending[_pendingCount++] = (byte)(buf >> 8);
+                            pending[_pendingCount++] = (byte)(buf >> 16);
+                            pending[_pendingCount++] = (byte)(buf >> 24);
+                            _biBuf = 0;
+                            _biCount = 0;
+                            return;
+                        }
+
+                        pending[_pendingCount++] = (byte)buf;
+                        pending[_pendingCount++] = (byte)(buf >> 8);
+                        pending[_pendingCount++] = (byte)(buf >> 16);
+                        _biBuf >>= 24;
+                        _biCount -= 24;
+                        return;
+                    }
+
+                    pending[_pendingCount++] = (byte)buf;
+                    pending[_pendingCount++] = (byte)(buf >> 8);
+                    _biBuf >>= 16;
+                    _biCount -= 16;
+                    return;
+                }
+
+                pending[_pendingCount++] = (byte)_biBuf;
+                _biBuf >>= 8;
+                _biCount -= 8;
             }
         }
+
+        /// <summary>
+        /// Flush the bit buffer and align the output on a byte boundary
+        /// </summary>
+        internal void BitWindup()
+        {
+            if (_biCount > 24)
+            {
+                _pending[_pendingCount++] = (byte)_biBuf;
+                _pending[_pendingCount++] = (byte)(_biBuf >> 8);
+                _pending[_pendingCount++] = (byte)(_biBuf >> 16);
+                _pending[_pendingCount++] = (byte)(_biBuf >> 24);
+            }
+            else if (_biCount > 16)
+            {
+                _pending[_pendingCount++] = (byte)_biBuf;
+                _pending[_pendingCount++] = (byte)(_biBuf >> 8);
+                _pending[_pendingCount++] = (byte)(_biBuf >> 16);
+            }
+            else if (_biCount > 8)
+            {
+                _pending[_pendingCount++] = (byte)_biBuf;
+                _pending[_pendingCount++] = (byte)(_biBuf >> 8);
+            }
+            else if (_biCount > 0)
+            {
+                _pending[_pendingCount++] = (byte)_biBuf;
+            }
+            _biBuf = 0;
+            _biCount = 0;
+        }
+
 
         /// <summary>
         /// Send one empty static block to give enough lookahead for inflate.
@@ -569,50 +646,53 @@ namespace Ionic.Zlib
         /// To simplify the code, we assume the worst case of last real code encoded
         /// on one bit only.
         /// </summary>
-        internal void TrAlign(ref BitBuf bi)
+        internal void TrAlign(byte* pending)
         {
-            SendBits(STATIC_TREES << 1, 3, ref bi);
-            SendCode(END_BLOCK, StaticTree.LengthAndLiteralsTreeCodes, ref bi);
-
-            BitFlush(ref bi);
-
-            // Of the 10 bits for the empty block, we have already sent
-            // (10 - bi_valid) bits. The lookahead for the last real code (before
-            // the EOB of the previous block) was thus at least one plus the length
-            // of the EOB plus what we have just sent of the empty static block.
-            if (1 + last_eob_len + 10 - bi.valid < 9)
+            fixed (short* tree = StaticTree.LengthAndLiteralsTreeCodes)
             {
-                SendBits(STATIC_TREES << 1, 3, ref bi);
-                SendCode(END_BLOCK, StaticTree.LengthAndLiteralsTreeCodes, ref bi);
-                BitFlush(ref bi);
+                SendBits(STATIC_TREES << 1, 3, pending);
+                SendCode(END_BLOCK, tree, pending);
+
+                BitFlush(pending);
+
+                // Of the 10 bits for the empty block, we have already sent
+                // (10 - bi_valid) bits. The lookahead for the last real code (before
+                // the EOB of the previous block) was thus at least one plus the length
+                // of the EOB plus what we have just sent of the empty static block.
+                if (1 + last_eob_len + 10 - _biCount < 9)
+                {
+                    SendBits(STATIC_TREES << 1, 3, pending);
+                    SendCode(END_BLOCK, tree, pending);
+                    BitFlush(pending);
+                }
+                last_eob_len = 7;
             }
-            last_eob_len = 7;
         }
 
         /// <summary>
         /// Save the match info and tally the frequency counts. Return true if
         /// the current block must be flushed.
         /// </summary>
-        internal bool TrTally(int dist, int lc)
+        internal bool TrTally(int dist, int lc, byte* pending)
         {
-            _pending[_distanceOffset + last_lit * 2] = (byte)(((uint)dist >> 8) & 0xff);
-            _pending[_distanceOffset + last_lit * 2 + 1] = (byte)(dist & 0xff);
-            _pending[_lengthOffset + last_lit] = (byte)(lc & 0xff);
+            pending[_distanceOffset + last_lit * 2] = (byte)(((uint)dist >> 8) & 0xff);
+            pending[_distanceOffset + last_lit * 2 + 1] = (byte)(dist & 0xff);
+            pending[_lengthOffset + last_lit] = (byte)(lc & 0xff);
 
             last_lit++;
 
             if (dist == 0)
             {
                 // lc is the unmatched char
-                dyn_ltree[lc * 2]++;
+                _dyn_ltree[lc * 2]++;
             }
             else
             {
                 matches++;
                 // Here, lc is the match length - MIN_MATCH
                 dist--; // dist = match distance - 1
-                dyn_ltree[(DeflateTree.LengthCode[lc] + DeflateConstants.LITERALS + 1) * 2]++;
-                dyn_dtree[DeflateTree.DistanceCode(dist) * 2]++;
+                _dyn_ltree[(DeflateTree.LengthCode[lc] + DeflateConstants.LITERALS + 1) * 2]++;
+                _dyn_dtree[DeflateTree.DistanceCode(dist) * 2]++;
             }
 
             if ((last_lit & 0x1fff) == 0 && (int)_compressionLevel > 2)
@@ -622,7 +702,7 @@ namespace Ionic.Zlib
                 int in_length = strstart - block_start;
 
                 var extraDistanceBits = DeflateTree.ExtraDistanceBits.AsSpan(0, DeflateConstants.D_CODES);
-                var dyndtree = dyn_dtree.AsSpan(0, DeflateConstants.D_CODES * 2);
+                var dyndtree = _dyn_dtree.AsSpan(0, DeflateConstants.D_CODES * 2);
                 for (int dcode = 0; dcode < DeflateConstants.D_CODES; dcode++)
                     out_length = (int)(out_length + dyndtree[dcode * 2] * (5L + extraDistanceBits[dcode]));
 
@@ -642,12 +722,12 @@ namespace Ionic.Zlib
         /// <summary>
         /// Send the block data compressed using the given Huffman trees
         /// </summary>
-        internal void SendCompressedBlock(short[] ltree, short[] dtree, ref BitBuf bi)
+        internal void SendCompressedBlock(short* ltree, short* dtree, byte* pending)
         {
             if (last_lit != 0)
             {
                 int distance; // distance of matched string
-                int lc;       // match length or unmatched char (if dist == 0)
+                byte lc;       // match length or unmatched char (if dist == 0)
                 int lx = 0;   // running index in l_buf
                 int code;     // the code to send
                 int extra;    // number of extra bits to send
@@ -662,13 +742,13 @@ namespace Ionic.Zlib
                 do
                 {
                     int ix = _distanceOffset + lx * 2;
-                    distance = (_pending[ix] << 8) | _pending[ix + 1];
-                    lc = _pending[_lengthOffset + lx];
+                    distance = (pending[ix] << 8) | pending[ix + 1];
+                    lc = pending[_lengthOffset + lx];
                     lx++;
 
                     if (distance == 0)
                     {
-                        SendCode(lc, ltree, ref bi); // send a literal byte
+                        SendCode(lc, ltree, pending); // send a literal byte
                     }
                     else
                     {
@@ -677,26 +757,26 @@ namespace Ionic.Zlib
                         code = lengthCode[lc];
 
                         // send the length code
-                        SendCode(code + DeflateConstants.LITERALS + 1, ltree, ref bi);
+                        SendCode(code + DeflateConstants.LITERALS + 1, ltree, pending);
                         extra = extraLengthBits[code];
                         if (extra != 0)
                         {
                             // send the extra length bits
-                            lc -= lengthBase[code];
-                            SendBits(lc, extra, ref bi);
+                            lc = (byte)(lc - lengthBase[code]);
+                            SendBits(lc, extra, pending);
                         }
                         distance--; // dist is now the match distance - 1
                         code = DeflateTree.DistanceCode(distCode, distance);
 
                         // send the distance code
-                        SendCode(code, dtree, ref bi);
+                        SendCode(code, dtree, pending);
 
                         extra = extraDistanceBits[code];
                         if (extra != 0)
                         {
                             // send the extra distance bits
                             distance -= distanceBase[code];
-                            SendBits(distance, extra, ref bi);
+                            SendBits(distance, extra, pending);
                         }
                     }
 
@@ -705,7 +785,7 @@ namespace Ionic.Zlib
                 while (lx < last_lit);
             }
 
-            SendCode(END_BLOCK, ltree, ref bi);
+            SendCode(END_BLOCK, ltree, pending);
             last_eob_len = ltree[END_BLOCK * 2 + 1];
         }
 
@@ -723,17 +803,17 @@ namespace Ionic.Zlib
             int bin_freq = 0;
             while (n < 7)
             {
-                bin_freq += dyn_ltree[n * 2];
+                bin_freq += _dyn_ltree[n * 2];
                 n++;
             }
             while (n < 128)
             {
-                ascii_freq += dyn_ltree[n * 2];
+                ascii_freq += _dyn_ltree[n * 2];
                 n++;
             }
             while (n < DeflateConstants.LITERALS)
             {
-                bin_freq += dyn_ltree[n * 2];
+                bin_freq += _dyn_ltree[n * 2];
                 n++;
             }
             data_type = (sbyte)(bin_freq > (ascii_freq >> 2) ? Z_BINARY : Z_ASCII);
@@ -741,67 +821,34 @@ namespace Ionic.Zlib
 
 
         /// <summary>
-        /// Flush the bit buffer, keeping at most 7 bits in it.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void BitFlush(ref BitBuf bi)
-        {
-            if (bi.valid == 16)
-            {
-                _pending[pendingCount++] = (byte)bi.buf;
-                _pending[pendingCount++] = (byte)(bi.buf >> 8);
-                bi = default;
-            }
-            else if (bi.valid >= 8)
-            {
-                _pending[pendingCount++] = (byte)bi.buf;
-                bi.buf >>= 8;
-                bi.valid -= 8;
-            }
-        }
-
-        /// <summary>
-        /// Flush the bit buffer and align the output on a byte boundary
-        /// </summary>
-        internal void BitWindup(ref BitBuf bi)
-        {
-            if (bi.valid > 8)
-            {
-                _pending[pendingCount++] = (byte)bi.buf;
-                _pending[pendingCount++] = (byte)(bi.buf >> 8);
-            }
-            else if (bi.valid > 0)
-            {
-                _pending[pendingCount++] = (byte)bi.buf;
-            }
-            bi = default;
-        }
-
-        /// <summary>
         /// Copy a stored block, storing first the length and its
         /// one's complement if requested.
         /// </summary>
-        internal void CopyBlock(int buf, int len, bool header, ref BitBuf bi)
+        internal void CopyBlock(int buf, int len, bool header, byte* pending)
         {
-            BitWindup(ref bi); // align on byte boundary
+            BitWindup(); // align on byte boundary
             last_eob_len = 8; // enough lookahead for inflate
 
             if (header)
             {
-                _pending[pendingCount++] = (byte)len;
-                _pending[pendingCount++] = (byte)(len >> 8);
+                pending[_pendingCount++] = (byte)len;
+                pending[_pendingCount++] = (byte)(len >> 8);
 
                 int flen = ~len;
-                _pending[pendingCount++] = (byte)flen;
-                _pending[pendingCount++] = (byte)(flen >> 8);
+                pending[_pendingCount++] = (byte)flen;
+                pending[_pendingCount++] = (byte)(flen >> 8);
             }
             PutBytes(_window, buf, len);
         }
 
         internal void FlushBlockOnly(
-            bool eof, ref Span<byte> output, ref int written, ref BitBuf bi)
+            bool eof, ref Span<byte> output, ref int written, byte* pending)
         {
-            TrFlushBlock(block_start >= 0 ? block_start : -1, strstart - block_start, eof, ref bi);
+            TrFlushBlock(
+                block_start >= 0 ? block_start : -1,
+                strstart - block_start,
+                eof,
+                pending);
 
             block_start = strstart;
             FlushPending(ref output, ref written);
@@ -824,68 +871,59 @@ namespace Ionic.Zlib
             // Stored blocks are limited to 0xffff bytes, pending is limited
             // to pending_buf_size, and each stored block has a 5 byte header:
 
-            BitBuf bi = _bi;
-
             int max_block_size = 0xffff;
             int max_start;
 
             if (max_block_size > _pending.Length - 5)
                 max_block_size = _pending.Length - 5;
 
-            // Copy as much as possible from input to output:
-            while (true)
+            fixed (byte* pending = _pending)
             {
-                // Fill the window as much as possible:
-                if (lookahead <= 1)
+                // Copy as much as possible from input to output:
+                while (true)
                 {
-                    FillWindow(ref input, ref consumed);
-
-                    if (lookahead == 0 && flush == ZlibFlushType.None)
+                    // Fill the window as much as possible:
+                    if (lookahead <= 1)
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        FillWindow(ref input, ref consumed);
+
+                        if (lookahead == 0 && flush == ZlibFlushType.None)
+                            return DeflateBlockState.NeedMore;
+
+                        if (lookahead == 0)
+                            break; // flush the current block
                     }
 
-                    if (lookahead == 0)
-                        break; // flush the current block
-                }
+                    strstart += lookahead;
+                    lookahead = 0;
 
-                strstart += lookahead;
-                lookahead = 0;
-
-                // Emit a stored block if pending will be full:
-                max_start = block_start + max_block_size;
-                if (strstart == 0 || strstart >= max_start)
-                {
-                    // strstart == 0 is possible when wraparound on 16-bit machine
-                    lookahead = strstart - max_start;
-                    strstart = max_start;
-
-                    FlushBlockOnly(false, ref output, ref written, ref bi);
-
-                    if (output.Length == 0)
+                    // Emit a stored block if pending will be full:
+                    max_start = block_start + max_block_size;
+                    if (strstart == 0 || strstart >= max_start)
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        // strstart == 0 is possible when wraparound on 16-bit machine
+                        lookahead = strstart - max_start;
+                        strstart = max_start;
+
+                        FlushBlockOnly(false, ref output, ref written, pending);
+
+                        if (output.Length == 0)
+                            return DeflateBlockState.NeedMore;
+                    }
+
+                    // Flush if we may have to slide, otherwise block_start may become
+                    // negative and the data will be gone:
+                    if (strstart - block_start >= w_size - MIN_LOOKAHEAD)
+                    {
+                        FlushBlockOnly(false, ref output, ref written, pending);
+
+                        if (output.Length == 0)
+                            return DeflateBlockState.NeedMore;
                     }
                 }
 
-                // Flush if we may have to slide, otherwise block_start may become
-                // negative and the data will be gone:
-                if (strstart - block_start >= w_size - MIN_LOOKAHEAD)
-                {
-                    FlushBlockOnly(false, ref output, ref written, ref bi);
-
-                    if (output.Length == 0)
-                    {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
-                    }
-                }
+                FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, pending);
             }
-
-            FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, ref bi);
-            _bi = bi;
 
             if (output.Length == 0)
             {
@@ -899,17 +937,17 @@ namespace Ionic.Zlib
         /// <summary>
         /// Send a stored block
         /// </summary>
-        internal void TrStoredBlock(int buf, int stored_len, bool eof, ref BitBuf bi)
+        internal void TrStoredBlock(int buf, int stored_len, bool eof, byte* pending)
         {
-            SendBits((STORED_BLOCK << 1) + (eof ? 1 : 0), 3, ref bi); // send block type
-            CopyBlock(buf, stored_len, true, ref bi); // with header
+            SendBits((STORED_BLOCK << 1) + (eof ? 1 : 0), 3, pending); // send block type
+            CopyBlock(buf, stored_len, true, pending); // with header
         }
 
         /// <summary>
         /// Determine the best encoding for the current block: dynamic trees, static
         /// trees or store, and output the encoded block to the zip file.
         /// </summary>
-        internal void TrFlushBlock(int buf, int stored_len, bool eof, ref BitBuf bi)
+        internal void TrFlushBlock(int buf, int stored_len, bool eof, byte* pending)
         {
             int opt_lenb, static_lenb; // opt_len and static_len in bytes
             int max_blindex = 0; // index of last bit length code of non zero freq
@@ -922,9 +960,9 @@ namespace Ionic.Zlib
                     SetDataType();
 
                 // Construct the literal and distance trees
-                treeLiterals.BuildTree(this);
+                _treeLiterals.BuildTree(this);
 
-                treeDistances.BuildTree(this);
+                _treeDistances.BuildTree(this);
 
                 // At this point, opt_len and static_len are the total bit lengths of
                 // the compressed block data, excluding the tree representations.
@@ -953,20 +991,32 @@ namespace Ionic.Zlib
                 // the last block flush, because compression would have been
                 // successful. If LIT_BUFSIZE <= WSIZE, it is never too late to
                 // transform a block into a stored block.
-                TrStoredBlock(buf, stored_len, eof, ref bi);
+                TrStoredBlock(buf, stored_len, eof, pending);
             }
             else if (static_lenb == opt_lenb)
             {
-                SendBits((STATIC_TREES << 1) + (eof ? 1 : 0), 3, ref bi);
-                SendCompressedBlock(
-                    StaticTree.LengthAndLiteralsTreeCodes, StaticTree.DistTreeCodes, ref bi);
+                SendBits((STATIC_TREES << 1) + (eof ? 1 : 0), 3, pending);
+
+                fixed (short* llTree = StaticTree.LengthAndLiteralsTreeCodes)
+                fixed (short* distTree = StaticTree.DistTreeCodes)
+                {
+                    SendCompressedBlock(llTree, distTree, pending);
+                }
             }
             else
             {
-                SendBits((DYN_TREES << 1) + (eof ? 1 : 0), 3, ref bi);
+                SendBits((DYN_TREES << 1) + (eof ? 1 : 0), 3, pending);
                 SendAllTrees(
-                    treeLiterals.max_code + 1, treeDistances.max_code + 1, max_blindex + 1, ref bi);
-                SendCompressedBlock(dyn_ltree, dyn_dtree, ref bi);
+                    _treeLiterals.max_code + 1,
+                    _treeDistances.max_code + 1,
+                    max_blindex + 1,
+                    pending);
+
+                fixed (short* dynltree = _dyn_ltree)
+                fixed (short* dyndtree = _dyn_dtree)
+                {
+                    SendCompressedBlock(dynltree, dyndtree, pending);
+                }
             }
 
             // The above check is made mod 2^32, for files larger than 512 MB
@@ -975,7 +1025,7 @@ namespace Ionic.Zlib
             InitializeBlocks();
 
             if (eof)
-                BitWindup(ref bi);
+                BitWindup();
         }
 
         // Fill the window when the lookahead becomes insufficient.
@@ -988,9 +1038,6 @@ namespace Ionic.Zlib
         //    option -- not supported here).
         private void FillWindow(ref ReadOnlySpan<byte> input, ref int consumed)
         {
-            int n;
-            int p;
-            int m;
             int more; // Amount of free space at the end of the window.
 
             byte[] window = _window;
@@ -1028,25 +1075,24 @@ namespace Ionic.Zlib
                     // later. (Using level 0 permanently is not an optimal usage of
                     // zlib, so we don't care about this pathological case.)
 
-                    n = hash_size;
-                    p = n;
+                    int p = hash_size;
                     do
                     {
-                        m = head[--p];
+                        ushort m = head[--p];
                         head[p] = (ushort)((m >= w_size) ? (m - w_size) : 0);
                     }
-                    while (--n != 0);
+                    while (p != 0);
 
-                    n = w_size;
-                    p = n;
+                    p = w_size;
                     do
                     {
-                        m = prev[--p];
+                        ushort m = prev[--p];
                         prev[p] = (ushort)((m >= w_size) ? (m - w_size) : 0);
                         // If n is not on any hash chain, prev[n] is garbage but
                         // its value will never be used.
                     }
-                    while (--n != 0);
+                    while (p != 0);
+
                     more += w_size;
                 }
 
@@ -1064,7 +1110,7 @@ namespace Ionic.Zlib
                 // Otherwise, window_size == 2*WSIZE so more >= 2.
                 // If there was sliding, more >= WSIZE. So in all cases, more >= 2.
 
-                n = ReadFrom(input, window.AsSpan(strstart + lookahead, more));
+                int n = ReadFrom(input, window.AsSpan(strstart + lookahead, more));
                 input = input.Slice(n);
                 consumed += n;
 
@@ -1094,119 +1140,114 @@ namespace Ionic.Zlib
             ushort hash_head = 0; // head of the hash chain
             bool bflush; // set if current block must be flushed
 
-            byte[] window = _window;
-            ushort[] head = _head;
-            ushort[] prev = _prev;
             int w_mask = _w_mask;
 
-            BitBuf bi = _bi;
-
-            while (true)
+            fixed (byte* window = _window)
+            fixed (byte* pending = _pending)
+            fixed (ushort* head = _head)
+            fixed (ushort* prev = _prev)
             {
-                // Make sure that we always have enough lookahead, except
-                // at the end of the input file. We need MAX_MATCH bytes
-                // for the next match, plus MIN_MATCH bytes to insert the
-                // string following the next match.
-                if (lookahead < MIN_LOOKAHEAD)
+                while (true)
                 {
-                    FillWindow(ref input, ref consumed);
-
-                    if (lookahead < MIN_LOOKAHEAD && flush == ZlibFlushType.None)
+                    // Make sure that we always have enough lookahead, except
+                    // at the end of the input file. We need MAX_MATCH bytes
+                    // for the next match, plus MIN_MATCH bytes to insert the
+                    // string following the next match.
+                    if (lookahead < MIN_LOOKAHEAD)
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        FillWindow(ref input, ref consumed);
+
+                        if (lookahead < MIN_LOOKAHEAD && flush == ZlibFlushType.None)
+                            return DeflateBlockState.NeedMore;
+
+                        if (lookahead == 0)
+                            break; // flush the current block
                     }
 
-                    if (lookahead == 0)
-                        break; // flush the current block
-                }
-
-                // Insert the string window[strstart .. strstart+2] in the
-                // dictionary, and set hash_head to the head of the hash chain:
-                if (lookahead >= MIN_MATCH)
-                {
-                    ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
-
-                    prev[strstart & w_mask] = hash_head = head[ins_h];
-                    head[ins_h] = (ushort)strstart;
-                }
-
-                // Find the longest match, discarding those <= prev_length.
-                // At this point we have always match_length < MIN_MATCH
-
-                if (hash_head != 0L && (strstart - hash_head) <= w_size - MIN_LOOKAHEAD)
-                {
-                    // To simplify the code, we prevent matches with the string
-                    // of window index 0 (in particular we have to avoid a match
-                    // of the string with itself at the start of the input file).
-                    if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
+                    // Insert the string window[strstart .. strstart+2] in the
+                    // dictionary, and set hash_head to the head of the hash chain:
+                    if (lookahead >= MIN_MATCH)
                     {
-                        match_length = LongestMatch(hash_head);
+                        ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
+
+                        prev[strstart & w_mask] = hash_head = head[ins_h];
+                        head[ins_h] = (ushort)strstart;
                     }
-                    // longest_match() sets match_start
-                }
-                if (match_length >= MIN_MATCH)
-                {
-                    // check_match(strstart, match_start, match_length);
 
-                    bflush = TrTally(strstart - match_start, match_length - MIN_MATCH);
+                    // Find the longest match, discarding those <= prev_length.
+                    // At this point we have always match_length < MIN_MATCH
 
-                    lookahead -= match_length;
-
-                    // Insert new strings in the hash table only if the match length
-                    // is not too large. This saves time but degrades compression.
-                    if (match_length <= _config.MaxLazy && lookahead >= MIN_MATCH)
+                    if (hash_head != 0L && (strstart - hash_head) <= w_size - MIN_LOOKAHEAD)
                     {
-                        match_length--; // string at strstart already in hash table
-                        do
+                        // To simplify the code, we prevent matches with the string
+                        // of window index 0 (in particular we have to avoid a match
+                        // of the string with itself at the start of the input file).
+                        if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
                         {
-                            strstart++;
-
-                            ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
-
-                            prev[strstart & w_mask] = hash_head = head[ins_h];
-                            head[ins_h] = (ushort)strstart;
-
-                            // strstart never exceeds WSIZE-MAX_MATCH, so there are
-                            // always MIN_MATCH bytes ahead.
+                            match_length = LongestMatch(hash_head, window, prev);
                         }
-                        while (--match_length != 0);
-                        strstart++;
+                        // longest_match() sets match_start
+                    }
+                    if (match_length >= MIN_MATCH)
+                    {
+                        // check_match(strstart, match_start, match_length);
+
+                        bflush = TrTally(strstart - match_start, match_length - MIN_MATCH, pending);
+
+                        lookahead -= match_length;
+
+                        // Insert new strings in the hash table only if the match length
+                        // is not too large. This saves time but degrades compression.
+                        if (match_length <= _config.MaxLazy && lookahead >= MIN_MATCH)
+                        {
+                            match_length--; // string at strstart already in hash table
+                            do
+                            {
+                                strstart++;
+
+                                ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
+
+                                prev[strstart & w_mask] = hash_head = head[ins_h];
+                                head[ins_h] = (ushort)strstart;
+
+                                // strstart never exceeds WSIZE-MAX_MATCH, so there are
+                                // always MIN_MATCH bytes ahead.
+                            }
+                            while (--match_length != 0);
+                            strstart++;
+                        }
+                        else
+                        {
+                            strstart += match_length;
+                            match_length = 0;
+
+                            ins_h = window[strstart];
+                            ins_h = ((ins_h << hash_shift) ^ window[strstart + 1]) & hash_mask;
+
+                            // If lookahead < MIN_MATCH, ins_h is garbage, but it does not
+                            // matter since it will be recomputed at next deflate call.
+                        }
                     }
                     else
                     {
-                        strstart += match_length;
-                        match_length = 0;
+                        // No match, output a literal byte
 
-                        ins_h = window[strstart];
-                        ins_h = ((ins_h << hash_shift) ^ window[strstart + 1]) & hash_mask;
-
-                        // If lookahead < MIN_MATCH, ins_h is garbage, but it does not
-                        // matter since it will be recomputed at next deflate call.
+                        bflush = TrTally(0, window[strstart], pending);
+                        lookahead--;
+                        strstart++;
                     }
-                }
-                else
-                {
-                    // No match, output a literal byte
 
-                    bflush = TrTally(0, window[strstart]);
-                    lookahead--;
-                    strstart++;
-                }
-                if (bflush)
-                {
-                    FlushBlockOnly(false, ref output, ref written, ref bi);
-
-                    if (output.Length == 0)
+                    if (bflush)
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        FlushBlockOnly(false, ref output, ref written, pending);
+
+                        if (output.Length == 0)
+                            return DeflateBlockState.NeedMore;
                     }
                 }
-            }
 
-            FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, ref bi);
-            _bi = bi;
+                FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, pending);
+            }
 
             if (output.Length == 0)
             {
@@ -1227,157 +1268,148 @@ namespace Ionic.Zlib
             ushort hash_head = 0; // head of hash chain
             bool bflush; // set if current block must be flushed
 
-            byte[] window = _window;
-            ushort[] head = _head;
-            ushort[] prev = _prev;
             int w_mask = _w_mask;
 
-            BitBuf bi = _bi;
-
-            // Process the input block.
-            while (true)
+            fixed (byte* window = _window)
+            fixed (ushort* head = _head)
+            fixed (ushort* prev = _prev)
+            fixed (byte* pending = _pending)
             {
-                // Make sure that we always have enough lookahead, except
-                // at the end of the input file. We need MAX_MATCH bytes
-                // for the next match, plus MIN_MATCH bytes to insert the
-                // string following the next match.
-
-                if (lookahead < MIN_LOOKAHEAD)
+                // Process the input block.
+                while (true)
                 {
-                    FillWindow(ref input, ref consumed);
+                    // Make sure that we always have enough lookahead, except
+                    // at the end of the input file. We need MAX_MATCH bytes
+                    // for the next match, plus MIN_MATCH bytes to insert the
+                    // string following the next match.
 
-                    if (lookahead < MIN_LOOKAHEAD && flush == ZlibFlushType.None)
+                    if (lookahead < MIN_LOOKAHEAD)
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        FillWindow(ref input, ref consumed);
+
+                        if (lookahead < MIN_LOOKAHEAD && flush == ZlibFlushType.None)
+                            return DeflateBlockState.NeedMore;
+
+                        if (lookahead == 0)
+                            break; // flush the current block
                     }
 
-                    if (lookahead == 0)
-                        break; // flush the current block
-                }
+                    // Insert the string window[strstart .. strstart+2] in the
+                    // dictionary, and set hash_head to the head of the hash chain:
 
-                // Insert the string window[strstart .. strstart+2] in the
-                // dictionary, and set hash_head to the head of the hash chain:
-
-                if (lookahead >= MIN_MATCH)
-                {
-                    ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
-
-                    prev[strstart & w_mask] = hash_head = head[ins_h];
-                    head[ins_h] = (ushort)strstart;
-                }
-
-                // Find the longest match, discarding those <= prev_length.
-                prev_length = match_length;
-                prev_match = match_start;
-                match_length = MIN_MATCH - 1;
-
-                if (hash_head != 0 && prev_length < _config.MaxLazy &&
-                    ((strstart - hash_head)) <= w_size - MIN_LOOKAHEAD)
-                {
-                    // To simplify the code, we prevent matches with the string
-                    // of window index 0 (in particular we have to avoid a match
-                    // of the string with itself at the start of the input file).
-
-                    if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
+                    if (lookahead >= MIN_MATCH)
                     {
-                        match_length = LongestMatch(hash_head);
+                        ins_h = ((ins_h << hash_shift) ^ window[strstart + (MIN_MATCH - 1)]) & hash_mask;
+
+                        prev[strstart & w_mask] = hash_head = head[ins_h];
+                        head[ins_h] = (ushort)strstart;
                     }
-                    // longest_match() sets match_start
 
-                    if (match_length <= 5 &&
-                        (_compressionStrategy == CompressionStrategy.Filtered ||
-                        (match_length == MIN_MATCH && strstart - match_start > 4096)))
+                    // Find the longest match, discarding those <= prev_length.
+                    prev_length = match_length;
+                    prev_match = match_start;
+                    match_length = MIN_MATCH - 1;
+
+                    if (hash_head != 0 && prev_length < _config.MaxLazy &&
+                        strstart - hash_head <= w_size - MIN_LOOKAHEAD)
                     {
+                        // To simplify the code, we prevent matches with the string
+                        // of window index 0 (in particular we have to avoid a match
+                        // of the string with itself at the start of the input file).
 
-                        // If prev_match is also MIN_MATCH, match_start is garbage
-                        // but we will ignore the current match anyway.
-                        match_length = MIN_MATCH - 1;
-                    }
-                }
-
-                // If there was a match at the previous step and the current
-                // match is not better, output the previous match:
-                if (prev_length >= MIN_MATCH && match_length <= prev_length)
-                {
-                    int max_insert = strstart + lookahead - MIN_MATCH;
-                    // Do not insert strings in hash table beyond this.
-
-                    // check_match(strstart-1, prev_match, prev_length);
-
-                    bflush = TrTally(strstart - 1 - prev_match, prev_length - MIN_MATCH);
-
-                    // Insert in hash table all strings up to the end of the match.
-                    // strstart-1 and strstart are already inserted. If there is not
-                    // enough lookahead, the last two strings are not inserted in
-                    // the hash table.
-                    lookahead -= prev_length - 1;
-                    prev_length -= 2;
-                    do
-                    {
-                        if (++strstart <= max_insert)
+                        if (_compressionStrategy != CompressionStrategy.HuffmanOnly)
                         {
-                            ins_h = ((ins_h << hash_shift) ^ (window[strstart + (MIN_MATCH - 1)])) & hash_mask;
+                            match_length = LongestMatch(hash_head, window, prev);
+                        }
+                        // longest_match() sets match_start
 
-                            prev[strstart & w_mask] = hash_head = head[ins_h];
-                            head[ins_h] = (ushort)strstart;
+                        if (match_length <= 5 &&
+                            (_compressionStrategy == CompressionStrategy.Filtered ||
+                            (match_length == MIN_MATCH && strstart - match_start > 4096)))
+                        {
+
+                            // If prev_match is also MIN_MATCH, match_start is garbage
+                            // but we will ignore the current match anyway.
+                            match_length = MIN_MATCH - 1;
                         }
                     }
-                    while (--prev_length != 0);
-                    match_available = 0;
-                    match_length = MIN_MATCH - 1;
-                    strstart++;
 
-                    if (bflush)
+                    // If there was a match at the previous step and the current
+                    // match is not better, output the previous match:
+                    if (prev_length >= MIN_MATCH && match_length <= prev_length)
                     {
-                        FlushBlockOnly(false, ref output, ref written, ref bi);
+                        int max_insert = strstart + lookahead - MIN_MATCH;
+                        // Do not insert strings in hash table beyond this.
+
+                        // check_match(strstart-1, prev_match, prev_length);
+
+                        bflush = TrTally(strstart - 1 - prev_match, prev_length - MIN_MATCH, pending);
+
+                        // Insert in hash table all strings up to the end of the match.
+                        // strstart-1 and strstart are already inserted. If there is not
+                        // enough lookahead, the last two strings are not inserted in
+                        // the hash table.
+                        lookahead -= prev_length - 1;
+                        prev_length -= 2;
+                        do
+                        {
+                            if (++strstart <= max_insert)
+                            {
+                                ins_h = ((ins_h << hash_shift) ^ (window[strstart + (MIN_MATCH - 1)])) & hash_mask;
+
+                                prev[strstart & w_mask] = hash_head = head[ins_h];
+                                head[ins_h] = (ushort)strstart;
+                            }
+                        }
+                        while (--prev_length != 0);
+                        match_available = 0;
+                        match_length = MIN_MATCH - 1;
+                        strstart++;
+
+                        if (bflush)
+                        {
+                            FlushBlockOnly(false, ref output, ref written, pending);
+
+                            if (output.Length == 0)
+                                return DeflateBlockState.NeedMore;
+                        }
+                    }
+                    else if (match_available != 0)
+                    {
+                        // If there was no match at the previous position, output a
+                        // single literal. If there was a match but the current match
+                        // is longer, truncate the previous match to a single literal.
+
+                        bflush = TrTally(0, window[strstart - 1], pending);
+
+                        if (bflush)
+                            FlushBlockOnly(false, ref output, ref written, pending);
+
+                        strstart++;
+                        lookahead--;
 
                         if (output.Length == 0)
-                        {
-                            _bi = bi;
                             return DeflateBlockState.NeedMore;
-                        }
                     }
-                }
-                else if (match_available != 0)
-                {
-                    // If there was no match at the previous position, output a
-                    // single literal. If there was a match but the current match
-                    // is longer, truncate the previous match to a single literal.
-
-                    bflush = TrTally(0, window[strstart - 1]);
-
-                    if (bflush)
-                        FlushBlockOnly(false, ref output, ref written, ref bi);
-
-                    strstart++;
-                    lookahead--;
-
-                    if (output.Length == 0)
+                    else
                     {
-                        _bi = bi;
-                        return DeflateBlockState.NeedMore;
+                        // There is no previous match to compare with, wait for
+                        // the next step to decide.
+
+                        match_available = 1;
+                        strstart++;
+                        lookahead--;
                     }
                 }
-                else
+
+                if (match_available != 0)
                 {
-                    // There is no previous match to compare with, wait for
-                    // the next step to decide.
-
-                    match_available = 1;
-                    strstart++;
-                    lookahead--;
+                    TrTally(0, window[strstart - 1], pending);
+                    match_available = 0;
                 }
-            }
 
-            if (match_available != 0)
-            {
-                TrTally(0, window[strstart - 1]);
-                match_available = 0;
+                FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, pending);
             }
-
-            FlushBlockOnly(flush == ZlibFlushType.Finish, ref output, ref written, ref bi);
-            _bi = bi;
 
             if (output.Length == 0)
             {
@@ -1389,11 +1421,8 @@ namespace Ionic.Zlib
         }
 
 
-        internal int LongestMatch(int cur_match)
+        internal int LongestMatch(int cur_match, byte* window, ushort* prev)
         {
-            ushort[] prev = _prev;
-            byte[] window = _window;
-
             int chain_length = _config.MaxChainLength; // max hash chain length
             int scan = strstart;                      // current string
             int match;                                // matched string
@@ -1475,7 +1504,9 @@ namespace Ionic.Zlib
                     scan_end = window[scan + best_len];
                 }
             }
-            while ((cur_match = prev[cur_match & w_mask]) > limit && --chain_length != 0);
+            while (
+                (cur_match = prev[cur_match & w_mask]) > limit &&
+                --chain_length != 0);
 
             if (best_len <= lookahead)
                 return best_len;
@@ -1541,7 +1572,7 @@ namespace Ionic.Zlib
 
         internal void Reset()
         {
-            pendingCount = 0;
+            _pendingCount = 0;
             nextPending = 0;
 
             Rfc1950BytesEmitted = false;
@@ -1670,7 +1701,7 @@ namespace Ionic.Zlib
         /// </summary>
         internal void FlushPending(ref Span<byte> output, ref int written)
         {
-            int length = pendingCount;
+            int length = _pendingCount;
             if (length > output.Length)
                 length = output.Length;
             if (length == 0)
@@ -1681,7 +1712,7 @@ namespace Ionic.Zlib
             {
                 throw new ZlibException(string.Format(
                     "Invalid State. (pending.Length={0}, pendingCount={1})",
-                    _pending.Length, pendingCount));
+                    _pending.Length, _pendingCount));
             }
 
             _pending.AsSpan(nextPending, length).CopyTo(output);
@@ -1689,9 +1720,9 @@ namespace Ionic.Zlib
             written += length;
 
             nextPending += length;
-            pendingCount -= length;
+            _pendingCount -= length;
 
-            if (pendingCount == 0)
+            if (_pendingCount == 0)
                 nextPending = 0;
         }
 
@@ -1722,16 +1753,16 @@ namespace Ionic.Zlib
                 header += 31 - (header % 31);
 
                 status = BUSY_STATE;
-                _pending[pendingCount++] = (byte)(header >> 8);
-                _pending[pendingCount++] = (byte)header;
+                _pending[_pendingCount++] = (byte)(header >> 8);
+                _pending[_pendingCount++] = (byte)header;
 
                 // Save the adler32 of the preset dictionary:
                 if (strstart != 0)
                 {
-                    _pending[pendingCount++] = (byte)((_adler32 & 0xFF000000) >> 24);
-                    _pending[pendingCount++] = (byte)((_adler32 & 0x00FF0000) >> 16);
-                    _pending[pendingCount++] = (byte)((_adler32 & 0x0000FF00) >> 8);
-                    _pending[pendingCount++] = (byte)(_adler32 & 0x000000FF);
+                    _pending[_pendingCount++] = (byte)((_adler32 & 0xFF000000) >> 24);
+                    _pending[_pendingCount++] = (byte)((_adler32 & 0x00FF0000) >> 16);
+                    _pending[_pendingCount++] = (byte)((_adler32 & 0x0000FF00) >> 8);
+                    _pending[_pendingCount++] = (byte)(_adler32 & 0x000000FF);
                 }
                 _adler32 = Consts.InitialAdler32;
             }
@@ -1740,7 +1771,7 @@ namespace Ionic.Zlib
             written = 0;
 
             // Flush as much pending output as possible
-            if (pendingCount != 0)
+            if (_pendingCount != 0)
             {
                 FlushPending(ref output, ref written);
 
@@ -1811,25 +1842,28 @@ namespace Ionic.Zlib
 
                 if (bstate == DeflateBlockState.BlockDone)
                 {
-                    if (flush == ZlibFlushType.Partial)
+                    fixed (byte* pending = _pending)
                     {
-                        TrAlign(ref _bi);
-                    }
-                    else
-                    {
-                        // FlushType.Full or FlushType.Sync
-                        TrStoredBlock(0, 0, false, ref _bi);
-
-                        // For a full flush, this empty block will be recognized
-                        // as a special marker by inflate_sync().
-                        if (flush == ZlibFlushType.Full)
+                        if (flush == ZlibFlushType.Partial)
                         {
-                            // clear hash (forget the history)
-                            _head.AsSpan(0, hash_size).Clear();
+                            TrAlign(pending);
                         }
-                    }
+                        else
+                        {
+                            // FlushType.Full or FlushType.Sync
+                            TrStoredBlock(0, 0, false, pending);
 
-                    FlushPending(ref output, ref written);
+                            // For a full flush, this empty block will be recognized
+                            // as a special marker by inflate_sync().
+                            if (flush == ZlibFlushType.Full)
+                            {
+                                // clear hash (forget the history)
+                                _head.AsSpan(0, hash_size).Clear();
+                            }
+                        }
+
+                        FlushPending(ref output, ref written);
+                    }
 
                     if (output.Length == 0)
                     {
@@ -1846,16 +1880,16 @@ namespace Ionic.Zlib
                 return (ZlibCode.StreamEnd, null);
 
             // Write the zlib trailer (adler32)
-            _pending[pendingCount++] = (byte)((_adler32 & 0xFF000000) >> 24);
-            _pending[pendingCount++] = (byte)((_adler32 & 0x00FF0000) >> 16);
-            _pending[pendingCount++] = (byte)((_adler32 & 0x0000FF00) >> 8);
-            _pending[pendingCount++] = (byte)(_adler32 & 0x000000FF);
+            _pending[_pendingCount++] = (byte)((_adler32 & 0xFF000000) >> 24);
+            _pending[_pendingCount++] = (byte)((_adler32 & 0x00FF0000) >> 16);
+            _pending[_pendingCount++] = (byte)((_adler32 & 0x0000FF00) >> 8);
+            _pending[_pendingCount++] = (byte)(_adler32 & 0x000000FF);
 
             FlushPending(ref output, ref written);
 
             Rfc1950BytesEmitted = true; // write the trailer only once!
 
-            return (pendingCount != 0 ? ZlibCode.Ok : ZlibCode.StreamEnd, null);
+            return (_pendingCount != 0 ? ZlibCode.Ok : ZlibCode.StreamEnd, null);
         }
     }
 }

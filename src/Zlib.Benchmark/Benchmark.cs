@@ -15,7 +15,7 @@ namespace Zlib.Benchmark
         static void PrintPressBaseCompressedSize<TPressBase>(CompressionLevel level)
             where TPressBase : PressBase, new()
         {
-            int byteCount = 1024 * 16;
+            int byteCount = 1024 * 64;
             var systemDeflate = new TPressBase
             {
                 ByteCount = byteCount,

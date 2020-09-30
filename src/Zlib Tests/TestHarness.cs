@@ -376,7 +376,7 @@ I have a dream that one day every valley shall be exalted, and every hill and mo
                 {
                     sw.Write(selectedWord);
                     sw.Write(" ");
-                    bytesRemaining -= (selectedWord.Length + 1);
+                    bytesRemaining -= selectedWord.Length + 1;
                 }
             }
             while (bytesRemaining > 0);

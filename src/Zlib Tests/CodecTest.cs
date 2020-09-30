@@ -1387,7 +1387,7 @@ namespace Ionic.Zlib.Tests
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 
-            int sz = (128 * 1024) * Rnd.Next(14, 28); // 128k = default buffer size;
+            int sz = 128 * 1024 * Rnd.Next(14, 28); // 128k = default buffer size;
 
             using var s = new MemoryStream();
             TestContext.WriteLine("{0}: Compressing data...", sw.Elapsed);
