@@ -2,6 +2,7 @@
 using System.IO.Compression;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Loggers;
@@ -37,7 +38,7 @@ namespace Zlib.Benchmark
             PrintPressBaseCompressedSize<SystemDeflate>(CompressionLevel.Optimal);
             PrintPressBaseCompressedSize<IonicDeflate>(CompressionLevel.Optimal);
             Console.WriteLine();
-
+            
             var pressSwitcher = BenchmarkSwitcher.FromTypes(
                 new[] {
                     typeof(SystemDeflate),
@@ -55,8 +56,9 @@ namespace Zlib.Benchmark
                 .AddColumnProvider(
                     new CompositeColumnProvider(DefaultColumnProviders.Instance))
                 .AddLogger(new ConsoleLogger())
-                .AddExporter(new HtmlExporter());
-
+                .AddExporter(new HtmlExporter())
+                .AddDiagnoser(MemoryDiagnoser.Default);
+            
             pressSwitcher.RunAllJoined(config);
 
         }
