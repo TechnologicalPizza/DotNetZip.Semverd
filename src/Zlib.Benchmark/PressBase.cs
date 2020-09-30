@@ -7,11 +7,13 @@ namespace Zlib.Benchmark
 {
     public abstract class PressBase
     {
+        public const int ByteCount1 = 1024 * 16;
+
         private byte[] _data;
         private byte[] _buffer;
         private byte[] _compressed;
 
-        [Params(/*1024 * 16,*/ 1024 * 64)]
+        [Params(ByteCount1/*, 1024 * 64*/)]
         public int ByteCount { get; set; }
 
         [Params(CompressionLevel.Fastest/*, CompressionLevel.Optimal*/)]
