@@ -127,7 +127,7 @@ namespace Ionic.Zlib
         /// Map from a distance to a distance code.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static int DistanceCode(ReadOnlySpan<sbyte> source, int dist)
+        internal static sbyte DistanceCode(ReadOnlySpan<sbyte> source, int dist)
         {
             return (dist < 256)
                 ? source[dist]

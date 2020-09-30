@@ -48,7 +48,7 @@ namespace Ionic.Zlib
         private const int Z_ASCII = 1;
         private const int Z_UNKNOWN = 2;
 
-        private const int BiBufSize = 8 * sizeof(int);
+        private const int BiBufSize = 8 * sizeof(uint);
 
         private const int MIN_MATCH = 3;
         private const int MAX_MATCH = 258;
@@ -544,7 +544,7 @@ namespace Ionic.Zlib
             if (_biCount > BiBufSize - length)
                 BitFlush(pending);
 
-            _biBuf |= (uint)(value << _biCount);
+            _biBuf |= (uint)value << _biCount;
             _biCount += length;
         }
 
@@ -554,7 +554,7 @@ namespace Ionic.Zlib
             if (_biCount > BiBufSize - length)
                 BitFlush(pending);
 
-            _biBuf |= (uint)(value << _biCount);
+            _biBuf |= (uint)value << _biCount;
             _biCount += length;
         }
 
@@ -563,43 +563,32 @@ namespace Ionic.Zlib
         /// </summary>
         internal void BitFlush(byte* pending)
         {
-            int count = _biCount;
-            if (count >= 8)
+            if (_biCount >= 8)
             {
-                if (count >= 16)
-                {
-                    var buf = _biBuf;
-                    if (count >= 24)
-                    {
-                        if (count == BiBufSize)
-                        {
-                            pending[_pendingCount++] = (byte)buf;
-                            pending[_pendingCount++] = (byte)(buf >> 8);
-                            pending[_pendingCount++] = (byte)(buf >> 16);
-                            pending[_pendingCount++] = (byte)(buf >> 24);
-                            _biBuf = 0;
-                            _biCount = 0;
-                            return;
-                        }
-
-                        pending[_pendingCount++] = (byte)buf;
-                        pending[_pendingCount++] = (byte)(buf >> 8);
-                        pending[_pendingCount++] = (byte)(buf >> 16);
-                        _biBuf >>= 24;
-                        _biCount -= 24;
-                        return;
-                    }
-
-                    pending[_pendingCount++] = (byte)buf;
-                    pending[_pendingCount++] = (byte)(buf >> 8);
-                    _biBuf >>= 16;
-                    _biCount -= 16;
-                    return;
-                }
-
                 pending[_pendingCount++] = (byte)_biBuf;
                 _biBuf >>= 8;
                 _biCount -= 8;
+
+                if (_biCount >= 16)
+                {
+                    pending[_pendingCount++] = (byte)_biBuf;
+                    _biBuf >>= 8;
+                    _biCount -= 8;
+
+                    if (_biCount >= 24)
+                    {
+                        pending[_pendingCount++] = (byte)_biBuf;
+                        _biBuf >>= 8;
+                        _biCount -= 8;
+
+                        if (_biCount == BiBufSize)
+                        {
+                            pending[_pendingCount++] = (byte)_biBuf;
+                            _biBuf = 0;
+                            _biCount = 0;
+                        }
+                    }
+                }
             }
         }
 
@@ -727,7 +716,7 @@ namespace Ionic.Zlib
             if (last_lit != 0)
             {
                 int distance; // distance of matched string
-                byte lc;       // match length or unmatched char (if dist == 0)
+                int lc;       // match length or unmatched char (if dist == 0)
                 int lx = 0;   // running index in l_buf
                 int code;     // the code to send
                 int extra;    // number of extra bits to send
@@ -762,7 +751,7 @@ namespace Ionic.Zlib
                         if (extra != 0)
                         {
                             // send the extra length bits
-                            lc = (byte)(lc - lengthBase[code]);
+                            lc -= lengthBase[code];
                             SendBits(lc, extra, pending);
                         }
                         distance--; // dist is now the match distance - 1
